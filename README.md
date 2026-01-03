@@ -14,13 +14,12 @@ ___
 
 ### Credentials (4 minutes)
 
-This IA use Google AI Studio models to program and a Supabase Account. The main file needs Supabase Project URL, Supabse Project KEY and API Key from Google
-
-So save this informations:
-
-- Supabase URL
-- Supabase KEY
-- Google AI Studio API Key
+> [!NOTE]
+> This IA use Google AI Studio models to program and a Supabase Account. The main file needs Supabase Project URL, Supabse Project KEY and API Key from Google
+> So save this informations:
+> - Supabase URL
+> - Supabase KEY
+> - Google AI Studio API Key
 
 <br><br>
 
@@ -70,6 +69,7 @@ And in API Keys you will find your Supabase Key (Something like sb_publishable[.
 
 ___
 
-### When you get them, paste them in the beggining of main python file
+> [!IMPORTANT]
+> When you get them, paste them in the beggining of main python file
 
 <img width="223" height="148" alt="image" src="https://github.com/user-attachments/assets/4830a98e-b510-4f5a-a9f0-07adc9ac58c1" />
