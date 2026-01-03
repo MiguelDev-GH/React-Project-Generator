@@ -76,4 +76,8 @@ ___
 
 <img width="461" height="236" alt="credentials.txt file" src="https://github.com/user-attachments/assets/b908e19e-819f-416b-8ca9-5cfa09f929de" />
 
+___
 
+### Execute
+
+▶ To run the generator, just execute `fabrica.py`
