@@ -1,4 +1,6 @@
 import os
+os.system('cls' if os.name == 'nt' else 'clear')
+
 import subprocess
 import google.generativeai as genai
 import time
@@ -8,21 +10,73 @@ import sys
 import urllib.request
 from urllib.error import HTTPError
 
-versao = 5.1
+# -------------------------------- #
 
-# Api Key
-CHAVE_API = ""
+# FILL credentials.txt BEFORE RUN
 
-# Supabase data
+# -------------------------------- #
+
+
+# NO NEED to write here!
+AI_API_KEY = ""
 SUPABASE_URL = ""
 SUPABASE_KEY = ""
 
-genai.configure(api_key=CHAVE_API)
+versao = 5.3
 
-# IA Model (From AI Studio)
-NOME_MODELO = "models/gemini-3-flash-preview"
+AI_MODEL = "models/gemini-3-flash-preview"
 
-print(f">>> [SYSTEM] Motor carregado: {NOME_MODELO}")
+print("")
+
+try:
+    with open('credentials.txt', 'r', encoding='utf-8') as arquivo:
+        for linha in arquivo:
+            linha = linha.strip()
+            
+            try:
+                if "> GOOGLE API KEY" in linha:
+                    AI_API_KEY = linha.split('"')[1]
+                
+                elif "> SUPABASE URL" in linha:
+                    SUPABASE_URL = linha.split('"')[1]
+                
+                elif "> SUPABASE KEY" in linha:
+                    SUPABASE_KEY = linha.split('"')[1]
+                    
+                elif "> Agent Model" in linha:
+                    temp_model = linha.split('"')[1]
+                    if temp_model: 
+                        AI_MODEL = temp_model
+            except:
+                pass
+
+except FileNotFoundError:
+    print("\n❌ CRITICAL ERROR: File 'credentials.txt' not found.")
+    print("Please create it before running the factory.")
+    sys.exit()
+
+erros = []
+
+if not AI_API_KEY:
+    erros.append("- GOOGLE API KEY is missing or invalid.")
+
+if not SUPABASE_URL:
+    erros.append("- SUPABASE URL is missing or invalid.")
+
+if not SUPABASE_KEY:
+    erros.append("- SUPABASE KEY is missing or invalid.")
+
+if erros:
+    print("\n❌ CONFIGURATION ERROR:")
+    for erro in erros:
+        print(erro)
+    print("\nCheck your 'credentials.txt' file formatting.")
+    sys.exit()
+            
+
+genai.configure(api_key=AI_API_KEY)
+
+print(f">>> [SYSTEM] Engine loaded: {AI_MODEL}")
 
 config_seguranca = [
     { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" },
@@ -32,7 +86,7 @@ config_seguranca = [
 ]
 
 model = genai.GenerativeModel(
-    model_name=NOME_MODELO,
+    model_name=AI_MODEL,
     safety_settings=config_seguranca,
     generation_config={"temperature": 1, "max_output_tokens": 8192}
 )
@@ -41,27 +95,27 @@ CAMINHO_PROJETO = os.path.join(os.getcwd(), "base-app")
 ARQUIVO_ALVO = os.path.join(CAMINHO_PROJETO, "src", "App.jsx")
 ARQUIVO_HTML = os.path.join(CAMINHO_PROJETO, "index.html")
 
-# --- CONSTITUIÇÃO DO SISTEMA ---
+# --- SYSTEM CONSTITUTION (Translated to English) ---
 def montar_prompt_sistema(contexto_extra=""):
     return f"""
-    VOCÊ É UM GERADOR DE CÓDIGO REACT (VITE + TAILWIND).
+    YOU ARE A REACT CODE GENERATOR (VITE + TAILWIND).
     
-    🛑 REGRAS DE OURO (Sua existência depende disso):
-    1. LINGUAGEM: Use APENAS Javascript (JSX).
-    2. SAÍDA: Entregue APENAS o código dentro de ```jsx.
-    3. COMENTÁRIOS: PROIBIDO adicionar comentários.
+    🛑 GOLDEN RULES (Your existence depends on this):
+    1. LANGUAGE: Use ONLY Javascript (JSX).
+    2. OUTPUT: Deliver ONLY the code inside ```jsx. No conversational text.
+    3. COMMENTS: DO NOT add comments (// or /* */). Keep it clean.
     
-    💾 BANCO DE DADOS (SUPABASE JSON):
+    💾 DATABASE (SUPABASE JSON):
        - URL: "{SUPABASE_URL}"
        - KEY: "{SUPABASE_KEY}"
        - Import: import {{ createClient }} from '@supabase/supabase-js';
        - Init: const supabase = createClient('{SUPABASE_URL}', '{SUPABASE_KEY}');
-       - TABELA: 'app_universal' (JSONB).
+       - TABLE: 'app_universal' (JSONB).
        
     🖼️ ASSETS:
-       - Imagens: '[https://picsum.photos/id/](https://picsum.photos/id/){{id}}/800/600'
-       - Avatares: '[https://i.pravatar.cc/150?u=](https://i.pravatar.cc/150?u=){{id}}'
-       - Ícones: lucide-react
+       - Images: '[https://picsum.photos/id/](https://picsum.photos/id/){{id}}/800/600'
+       - Avatars: '[https://i.pravatar.cc/150?u=](https://i.pravatar.cc/150?u=){{id}}'
+       - Icons: lucide-react
        
     {contexto_extra}
     """
@@ -84,39 +138,37 @@ def atualizar_titulo_html(novo_titulo):
     except Exception:
         pass
 
-# --- NOVO FILTRO DE LINGUAGEM (UNIVERSAL) ---
+# --- LANGUAGE FILTER (UNIVERSAL) ---
 def extrair_codigo_inteligente(texto_ia):
-    # 1. Lista Negra: Assinaturas de linguagens erradas
+    # 1. Blacklist: Wrong languages signatures
     assinaturas_proibidas = [
         "def main():", "print(", "if __name__ ==", # Python
         "#include <", "int main()", "std::cout",   # C++ / C
         "public class", "System.out.println",      # Java
         "package main", "func main()",             # Go
         "<?php",                                   # PHP
-        "<!DOCTYPE html>"                          # HTML Puro (sem React)
+        "<!DOCTYPE html>"                          # Pure HTML (no React)
     ]
     
     for assinatura in assinaturas_proibidas:
         if assinatura in texto_ia:
-            print(f"\n❌ ALERTA: A IA usou linguagem errada ({assinatura}). Rejeitando...")
+            print(f"\n❌ ALERT: AI used wrong language ({assinatura}). Rejecting...")
             return None
     
-    # 2. Extrai o bloco de código
+    # 2. Extract code block
     match = re.search(r"```(?:jsx|javascript|js)?\s*(.*?)\s*```", texto_ia, re.DOTALL)
     if match:
         codigo = match.group(1)
     else:
-        # Se não tiver markdown, assume que é o texto todo (mas perigoso)
         codigo = texto_ia.replace("```jsx", "").replace("```", "")
 
-    # 3. Lista Branca: O código DEVE parecer React
-    # Todo App.jsx precisa exportar algo e retornar JSX
+    # 3. Whitelist: Code MUST look like React
     if "export default" not in codigo:
-        print("\n❌ ALERTA: O código não exporta o componente (Falta 'export default'). Rejeitando...")
+        print("\n❌ ALERT: Code does not export component (Missing 'export default'). Rejecting...")
         return None
     
     if "return (" not in codigo and "return <" not in codigo:
-        print("\n❌ ALERTA: O código não retorna JSX válido. Rejeitando...")
+        print("\n❌ ALERT: Code does not return valid JSX. Rejecting...")
         return None
 
     return codigo
@@ -129,7 +181,7 @@ def gerar_com_protecao(prompt):
         return codigo
     except Exception as e:
         if "429" in str(e):
-            print("\n🛑 COTA DIÁRIA ATINGIDA 🛑")
+            print("\n🛑 DAILY QUOTA EXCEEDED 🛑")
             sys.exit(0)
         return None
 
@@ -144,58 +196,58 @@ def verificar_e_instalar_libs(codigo):
         if nome not in libs_padrao: libs_para_instalar.append(nome)
     
     if libs_para_instalar:
-        print(f"\n>>> [AUTO] Instalando: {libs_para_instalar}")
+        print(f"\n>>> [AUTO] Installing: {libs_para_instalar}")
         subprocess.run(f"npm install {' '.join(libs_para_instalar)}", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def obter_regra_colecao(ideia_app):
     nome_colecao = re.sub(r'[^a-zA-Z0-9]', '_', ideia_app.lower())[:20]
     return f"""
-    📚 CONTEXTO DA APLICAÇÃO:
-    - Objetivo: "{ideia_app}"
-    - COLEÇÃO BANCO: '{nome_colecao}'
-    - Login: OBRIGATÓRIO (Email/Senha).
+    📚 APPLICATION CONTEXT:
+    - Goal: "{ideia_app}"
+    - DB COLLECTION: '{nome_colecao}'
+    - Login: MANDATORY (Email/Password).
     
-    USO DO BANCO (Strict Mode):
-    1. Insert: supabase.from('app_universal').insert([{{ collection: '{nome_colecao}', data: {{ ...dados, email: user.email }} }}])
+    DB USAGE (Strict Mode):
+    1. Insert: supabase.from('app_universal').insert([{{ collection: '{nome_colecao}', data: {{ ...data, email: user.email }} }}])
     2. Select: supabase.from('app_universal').select('*').eq('collection', '{nome_colecao}')
     """
 
 def gerar_codigo_ia(prompt_usuario):
-    print(f"\n>>> [IA] Criando do zero...")
+    print(f"\n>>> [AI] Creating from scratch...")
     contexto = obter_regra_colecao(prompt_usuario)
     sistema = montar_prompt_sistema(contexto)
-    prompt_final = f"{sistema}\nTAREFA: Escreva App.jsx COMPLETO."
+    prompt_final = f"{sistema}\nTASK: Write COMPLETE App.jsx."
     return gerar_com_protecao(prompt_final)
 
 def modificar_codigo_ia(codigo_atual, pedido_mudanca):
-    print(f"\n>>> [IA] Aplicando correções...")
+    print(f"\n>>> [AI] Applying fixes...")
     match_col = re.search(r"eq\('collection',\s*'([^']+)'\)", codigo_atual)
-    nome_colecao = match_col.group(1) if match_col else "app_generico"
+    nome_colecao = match_col.group(1) if match_col else "app_generic"
     
     contexto = f"""
-    🔧 EDIÇÃO:
-    - Pedido: "{pedido_mudanca}"
-    - Manter Coleção: '{nome_colecao}'
+    🔧 EDIT MODE:
+    - User Request: "{pedido_mudanca}"
+    - Keep Collection: '{nome_colecao}'
     """
     sistema = montar_prompt_sistema(contexto)
-    prompt_final = f"{sistema}\nCÓDIGO BASE:\n{codigo_atual}\nTAREFA: Reescreva App.jsx com as mudanças."
+    prompt_final = f"{sistema}\nBASE CODE:\n{codigo_atual}\nTASK: Rewrite App.jsx with changes."
     return gerar_com_protecao(prompt_final)
 
 def resgatar_codigo_cortado(codigo_atual):
-    print(f"\n>>> [IA] 🚑 RESGATANDO...")
-    sistema = montar_prompt_sistema("EMERGÊNCIA: Código anterior cortado.")
-    prompt_final = f"{sistema}\nTAREFA: Reescreva App.jsx DO ZERO."
+    print(f"\n>>> [AI] 🚑 RESCUING CODE...")
+    sistema = montar_prompt_sistema("EMERGENCY: Previous code was cut off.")
+    prompt_final = f"{sistema}\nTASK: Rewrite App.jsx FROM SCRATCH."
     return gerar_com_protecao(prompt_final)
 
 def salvar_arquivo(codigo):
     if not codigo: return False
-    print(">>> [SISTEMA] Salvando...")
+    print(">>> [SYSTEM] Saving file...")
     try:
         with open(ARQUIVO_ALVO, "w", encoding="utf-8") as f:
             f.write(codigo)
         return True
     except FileNotFoundError:
-        print(f"ERRO: Pasta base-app não encontrada.")
+        print(f"ERROR: base-app folder not found.")
         return False
 
 def encerrar_processo(processo):
@@ -215,27 +267,27 @@ def verificar_dominio_http(slug):
 
 def fazer_deploy(nome_inicial):
     limpar_tela()
-    print("\n>>> [BUILD] Compilando...")
+    print("\n>>> [BUILD] Compiling...")
     build = subprocess.run("npm run build", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     if build.returncode != 0:
-        print("\n❌ ERRO NO BUILD.")
+        print("\n❌ BUILD ERROR.")
         return None
     
     nome_atual = nome_inicial
     while True:
-        print(f"\n🔍 Checando: {nome_atual}.surge.sh ...")
+        print(f"\n🔍 Checking: {nome_atual}.surge.sh ...")
         if verificar_dominio_http(nome_atual):
-            print(f"⚠️  '{nome_atual}' existe.")
-            if input_limpo("É seu? (S/N): ").lower() == 's': break
+            print(f"⚠️  '{nome_atual}' already exists.")
+            if input_limpo("Is it yours? (Y/N): ").lower() == 'y': break
             else: 
-                nome_atual = re.sub(r'[^a-z0-9\s-]', '', input_limpo(">>> Novo nome: ").lower()).replace(" ", "-")
+                nome_atual = re.sub(r'[^a-z0-9\s-]', '', input_limpo(">>> New name: ").lower()).replace(" ", "-")
                 if not nome_atual: return None
         else:
-            print("✅ Livre!")
+            print("✅ Available!")
             break
 
     dominio_final = f"{nome_atual}.surge.sh"
-    print(f">>> [DEPLOY] Enviando...")
+    print(f">>> [DEPLOY] Uploading...")
     subprocess.run(f"npx surge ./dist --domain {dominio_final}", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL)
     return dominio_final
 
@@ -247,7 +299,7 @@ def limpar_nome(nome):
 def ciclo_visualizacao_edicao(prompt_inicial):
     limpar_tela()
     print("="*40)
-    print("   MODO DE VISUALIZAÇÃO (AUTO-REFRESH)")
+    print("   PREVIEW MODE (AUTO-REFRESH)")
     print("="*40)
     
     processo = subprocess.Popen("npm run dev -- --open", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
@@ -259,22 +311,22 @@ def ciclo_visualizacao_edicao(prompt_inicial):
         except: break
 
         print("\n" + "-"*30)
-        print(" [1] PEDIR MUDANÇA")
-        print(" [2] PUBLICAR")
-        print(" [3] SAIR")
-        print(" [4] 🚑 REFAZER DO ZERO")
+        print(" [1] REQUEST CHANGE (AI will rewrite)")
+        print(" [2] PUBLISH (Deploy)")
+        print(" [3] EXIT")
+        print(" [4] 🚑 RETRY FROM SCRATCH")
         print("-"*30)
         
         escolha = input_limpo(">>> ")
         
         if escolha == "1":
-            pedido = input_limpo("\n📝 O que mudar? ")
+            pedido = input_limpo("\n📝 What to change? ")
             if not pedido: continue
             novo_codigo = modificar_codigo_ia(codigo_atual, pedido)
             if novo_codigo:
                 verificar_e_instalar_libs(novo_codigo)
                 salvar_arquivo(novo_codigo)
-                print(">>> Atualizado!")
+                print(">>> Updated! Check browser.")
                 time.sleep(1)
                 limpar_tela()
         
@@ -283,7 +335,7 @@ def ciclo_visualizacao_edicao(prompt_inicial):
             if novo_codigo:
                 verificar_e_instalar_libs(novo_codigo)
                 salvar_arquivo(novo_codigo)
-                print(">>> Reconstruído.")
+                print(">>> Reconstructed.")
                 time.sleep(2)
                 limpar_tela()
         
@@ -291,26 +343,26 @@ def ciclo_visualizacao_edicao(prompt_inicial):
         elif escolha == "3": break
 
     encerrar_processo(processo)
-    return "sair" if escolha == "3" else "publicar"
+    return "exit" if escolha == "3" else "publish"
 
 def main():
     limpar_tela()
-    print(f"-=[ 🏭 FÁBRICA v{versao} (Filtro Universal) 🛑 ]=-")
+    print(f"-=[ 🏭 FACTORY v{versao} (Universal Filter) 🛑 ]=-")
 
     while True:
-        prompt = input_limpo("\n📝 Ideia do App (ou 'sair'): ")
-        if prompt.lower() == 'sair': break
-        nome = input_limpo("🏷️  Nome do Projeto: ") or "app-novo"
+        prompt = input_limpo("\n📝 App Idea (or 'exit'): ")
+        if prompt.lower() == 'exit': break
+        nome = input_limpo("🏷️  Project Name: ") or "new-app"
         
         codigo = gerar_codigo_ia(prompt)
         if codigo:
             verificar_e_instalar_libs(codigo)
             if salvar_arquivo(codigo):
                 atualizar_titulo_html(nome)
-                if ciclo_visualizacao_edicao(prompt) == "publicar":
+                if ciclo_visualizacao_edicao(prompt) == "publish":
                     link = fazer_deploy(limpar_nome(nome))
                     if link: print(f"\n✅ LINK: https://{link}\n")
-                    input("Enter para continuar...")
+                    input("Press Enter to continue...")
 
 if __name__ == "__main__":
     main()
