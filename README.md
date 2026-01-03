@@ -70,6 +70,10 @@ And in API Keys you will find your Supabase Key (Something like sb_publishable[.
 ___
 
 > [!IMPORTANT]
-> When you get them, paste them in the beggining of main python file
+> When you get them, paste them in the correct place in credentials.txt
 
-<img width="223" height="148" alt="image" src="https://github.com/user-attachments/assets/4830a98e-b510-4f5a-a9f0-07adc9ac58c1" />
+*You must see this*
+
+<img width="461" height="236" alt="credentials.txt file" src="https://github.com/user-attachments/assets/b908e19e-819f-416b-8ca9-5cfa09f929de" />
+
+
