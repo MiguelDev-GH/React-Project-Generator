@@ -2,6 +2,8 @@
 
 ### A fast AI automation to create a React Project, along with Tailwind and Supabase Database
 
+### And if you want, you can publish your project on web with Surge (Already Automated)
+
 ___
 
 # Dependencies
