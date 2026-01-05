@@ -1,0 +1,29 @@
+# 🔐 SEGURANÇA
+
+credentials.txt
+.env
+.env.local
+*.log
+
+# 🐍 PYTHON
+
+__pycache__/
+*.pyc
+venv/
+.venv/
+.pytest_cache/
+
+# ⚛️ REACT / NODE 
+
+node_modules/
+base-app/node_modules/
+
+dist/
+base-app/dist/
+build/
+
+# ===========================
+# 🖥️ SISTEMA OPERACIONAL
+# ===========================
+.DS_Store
+Thumbs.db
