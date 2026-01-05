@@ -1,6 +1,6 @@
 # 🔹 React Project Generator
 
-### Automated React Builder: AI-generated UI with Tailwind, Supabase backend, and one-click Surge deployment.
+### Automated React Builder: AI-generated UI with Tailwind, Supabase backend, and one-input Surge deployment.
 
 ___
 
