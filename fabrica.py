@@ -1,6 +1,4 @@
 import os
-os.system('cls' if os.name == 'nt' else 'clear')
-
 import subprocess
 import google.generativeai as genai
 import time
@@ -11,72 +9,83 @@ import urllib.request
 from urllib.error import HTTPError
 
 # -------------------------------- #
-
 # FILL credentials.txt BEFORE RUN
-
 # -------------------------------- #
 
-
-# NO NEED to write here!
-AI_API_KEY = ""
-SUPABASE_URL = ""
-SUPABASE_KEY = ""
-
-versao = 5.3
-
+AI_API_KEY = None
+SUPABASE_URL = None
+SUPABASE_KEY = None
 AI_MODEL = "models/gemini-3-flash-preview"
+USE_DATABASE = False # Default
 
-print("")
+versao = 5.4
 
+# --- 1. LOAD CREDENTIALS (Silent Load) ---
 try:
     with open('credentials.txt', 'r', encoding='utf-8') as arquivo:
         for linha in arquivo:
             linha = linha.strip()
-            
             try:
                 if "> GOOGLE API KEY" in linha:
                     AI_API_KEY = linha.split('"')[1]
-                
                 elif "> SUPABASE URL" in linha:
                     SUPABASE_URL = linha.split('"')[1]
-                
                 elif "> SUPABASE KEY" in linha:
                     SUPABASE_KEY = linha.split('"')[1]
-                    
                 elif "> Agent Model" in linha:
                     temp_model = linha.split('"')[1]
-                    if temp_model: 
-                        AI_MODEL = temp_model
-            except:
-                pass
-
+                    if temp_model: AI_MODEL = temp_model
+            except: pass
 except FileNotFoundError:
     print("\n❌ CRITICAL ERROR: File 'credentials.txt' not found.")
-    print("Please create it before running the factory.")
     sys.exit()
 
-erros = []
-
+# --- 2. VALIDATE AI KEY (Mandatory) ---
 if not AI_API_KEY:
-    erros.append("- GOOGLE API KEY is missing or invalid.")
-
-if not SUPABASE_URL:
-    erros.append("- SUPABASE URL is missing or invalid.")
-
-if not SUPABASE_KEY:
-    erros.append("- SUPABASE KEY is missing or invalid.")
-
-if erros:
-    print("\n❌ CONFIGURATION ERROR:")
-    for erro in erros:
-        print(erro)
-    print("\nCheck your 'credentials.txt' file formatting.")
+    print("\n❌ ERROR: GOOGLE API KEY is missing in credentials.txt")
     sys.exit()
-            
 
 genai.configure(api_key=AI_API_KEY)
 
-print(f">>> [SYSTEM] Engine loaded: {AI_MODEL}")
+# --- UTILS ---
+def limpar_tela():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def input_limpo(texto):
+    sys.stdout.flush()
+    return input(texto).strip()
+
+# --- 3. DATABASE SELECTION LOGIC ---
+limpar_tela()
+print(f"-=[ 🏭 FACTORY v{versao} ]=-")
+print(f"> Engine: {AI_MODEL}")
+print("-" * 30)
+
+while True:
+    print("🔌 Enable Database (Supabase)? (y/n)")
+    choice = input_limpo(">>> ").lower()
+    
+    if choice == 'y':
+        # Verify Supabase Credentials ONLY if user wants DB
+        if not SUPABASE_URL or not SUPABASE_KEY:
+            print("\n❌ ERROR: You selected Database, but SUPABASE keys are missing in credentials.txt")
+            print("Please fill them or select 'n'.")
+            sys.exit()
+        USE_DATABASE = True
+        print("✅ Database Enabled (Supabase connected).")
+        time.sleep(1)
+        break
+        
+    elif choice == 'n':
+        USE_DATABASE = False
+        print("⚠️  Database Disabled. Using Local State (RAM only).")
+        time.sleep(1)
+        break
+
+# --- CONFIG ---
+CAMINHO_PROJETO = os.path.join(os.getcwd(), "base-app")
+ARQUIVO_ALVO = os.path.join(CAMINHO_PROJETO, "src", "App.jsx")
+ARQUIVO_HTML = os.path.join(CAMINHO_PROJETO, "index.html")
 
 config_seguranca = [
     { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" },
@@ -91,42 +100,6 @@ model = genai.GenerativeModel(
     generation_config={"temperature": 1, "max_output_tokens": 8192}
 )
 
-CAMINHO_PROJETO = os.path.join(os.getcwd(), "base-app")
-ARQUIVO_ALVO = os.path.join(CAMINHO_PROJETO, "src", "App.jsx")
-ARQUIVO_HTML = os.path.join(CAMINHO_PROJETO, "index.html")
-
-# --- SYSTEM CONSTITUTION (Translated to English) ---
-def montar_prompt_sistema(contexto_extra=""):
-    return f"""
-    YOU ARE A REACT CODE GENERATOR (VITE + TAILWIND).
-    
-    🛑 GOLDEN RULES (Your existence depends on this):
-    1. LANGUAGE: Use ONLY Javascript (JSX).
-    2. OUTPUT: Deliver ONLY the code inside ```jsx. No conversational text.
-    3. COMMENTS: DO NOT add comments (// or /* */). Keep it clean.
-    
-    💾 DATABASE (SUPABASE JSON):
-       - URL: "{SUPABASE_URL}"
-       - KEY: "{SUPABASE_KEY}"
-       - Import: import {{ createClient }} from '@supabase/supabase-js';
-       - Init: const supabase = createClient('{SUPABASE_URL}', '{SUPABASE_KEY}');
-       - TABLE: 'app_universal' (JSONB).
-       
-    🖼️ ASSETS:
-       - Images: '[https://picsum.photos/id/](https://picsum.photos/id/){{id}}/800/600'
-       - Avatars: '[https://i.pravatar.cc/150?u=](https://i.pravatar.cc/150?u=){{id}}'
-       - Icons: lucide-react
-       
-    {contexto_extra}
-    """
-
-def limpar_tela():
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-def input_limpo(texto):
-    sys.stdout.flush()
-    return input(texto).strip()
-
 def atualizar_titulo_html(novo_titulo):
     try:
         with open(ARQUIVO_HTML, "r", encoding="utf-8") as f:
@@ -138,46 +111,62 @@ def atualizar_titulo_html(novo_titulo):
     except Exception:
         pass
 
-# --- LANGUAGE FILTER (UNIVERSAL) ---
-def extrair_codigo_inteligente(texto_ia):
-    # 1. Blacklist: Wrong languages signatures
-    assinaturas_proibidas = [
-        "def main():", "print(", "if __name__ ==", # Python
-        "#include <", "int main()", "std::cout",   # C++ / C
-        "public class", "System.out.println",      # Java
-        "package main", "func main()",             # Go
-        "<?php",                                   # PHP
-        "<!DOCTYPE html>"                          # Pure HTML (no React)
-    ]
-    
-    for assinatura in assinaturas_proibidas:
-        if assinatura in texto_ia:
-            print(f"\n❌ ALERT: AI used wrong language ({assinatura}). Rejecting...")
-            return None
-    
-    # 2. Extract code block
-    match = re.search(r"```(?:jsx|javascript|js)?\s*(.*?)\s*```", texto_ia, re.DOTALL)
-    if match:
-        codigo = match.group(1)
+# --- SYSTEM PROMPT (Dynamic based on USE_DATABASE) ---
+def montar_prompt_sistema(contexto_extra=""):
+    # Lógica condicional do Banco de Dados
+    if USE_DATABASE:
+        db_instructions = f"""
+    💾 DATABASE (SUPABASE JSON):
+       - URL: "{SUPABASE_URL}"
+       - KEY: "{SUPABASE_KEY}"
+       - Import: import {{ createClient }} from '@supabase/supabase-js';
+       - Init: const supabase = createClient('{SUPABASE_URL}', '{SUPABASE_KEY}');
+       - TABLE: 'app_universal' (JSONB).
+        """
     else:
-        codigo = texto_ia.replace("```jsx", "").replace("```", "")
+        db_instructions = f"""
+    💾 DATA STORAGE (LOCAL STATE ONLY):
+       - 🛑 DO NOT USE EXTERNAL DATABASES (No Supabase, No Firebase).
+       - USE React.useState and React.useEffect for data.
+       - Data will be lost on refresh (This is intended for this prototype).
+       - SIMULATE persistence using arrays/objects in state.
+        """
 
-    # 3. Whitelist: Code MUST look like React
-    if "export default" not in codigo:
-        print("\n❌ ALERT: Code does not export component (Missing 'export default'). Rejecting...")
-        return None
+    return f"""
+    YOU ARE A REACT CODE GENERATOR (VITE + TAILWIND).
     
-    if "return (" not in codigo and "return <" not in codigo:
-        print("\n❌ ALERT: Code does not return valid JSX. Rejecting...")
-        return None
+    🛑 GOLDEN RULES:
+    1. LANGUAGE: Use ONLY Javascript (JSX).
+    2. OUTPUT: Deliver ONLY the code inside ```jsx.
+    3. COMMENTS: DO NOT add comments.
+    
+    {db_instructions}
+       
+    🖼️ ASSETS:
+       - Images: '[https://picsum.photos/id/](https://picsum.photos/id/){{id}}/800/600'
+       - Avatars: '[https://i.pravatar.cc/150?u=](https://i.pravatar.cc/150?u=){{id}}'
+       - Icons: lucide-react
+       
+    {contexto_extra}
+    """
 
+def extrair_codigo_inteligente(texto_ia):
+    assinaturas_proibidas = ["def main():", "print(", "if __name__ ==", "#include <", "public class", "<?php"]
+    for assinatura in assinaturas_proibidas:
+        if assinatura in texto_ia: return None
+    
+    match = re.search(r"```(?:jsx|javascript|js)?\s*(.*?)\s*```", texto_ia, re.DOTALL)
+    if match: codigo = match.group(1)
+    else: codigo = texto_ia.replace("```jsx", "").replace("```", "")
+
+    if "export default" not in codigo: return None
+    if "return (" not in codigo and "return <" not in codigo: return None
     return codigo
 
 def gerar_com_protecao(prompt):
     try:
         resposta = model.generate_content(prompt)
         codigo = extrair_codigo_inteligente(resposta.text)
-        if not codigo: return None
         return codigo
     except Exception as e:
         if "429" in str(e):
@@ -201,15 +190,27 @@ def verificar_e_instalar_libs(codigo):
 
 def obter_regra_colecao(ideia_app):
     nome_colecao = re.sub(r'[^a-zA-Z0-9]', '_', ideia_app.lower())[:20]
-    return f"""
-    📚 APPLICATION CONTEXT:
-    - Goal: "{ideia_app}"
-    - DB COLLECTION: '{nome_colecao}'
-    - Login: MANDATORY (Email/Password).
     
+    if USE_DATABASE:
+        regra_banco = f"""
     DB USAGE (Strict Mode):
     1. Insert: supabase.from('app_universal').insert([{{ collection: '{nome_colecao}', data: {{ ...data, email: user.email }} }}])
     2. Select: supabase.from('app_universal').select('*').eq('collection', '{nome_colecao}')
+    - Login: MANDATORY (Email/Password).
+        """
+    else:
+        regra_banco = f"""
+    STATE MANAGEMENT:
+    - Use 'const [items, setItems] = useState([])'.
+    - Create dummy data for initial view.
+    - Login: OPTIONAL (Fake login or no login).
+        """
+
+    return f"""
+    📚 APPLICATION CONTEXT:
+    - Goal: "{ideia_app}"
+    - ID/Collection: '{nome_colecao}'
+    {regra_banco}
     """
 
 def gerar_codigo_ia(prompt_usuario):
@@ -346,9 +347,7 @@ def ciclo_visualizacao_edicao(prompt_inicial):
     return "exit" if escolha == "3" else "publish"
 
 def main():
-    limpar_tela()
-    print(f"-=[ 🏭 FACTORY v{versao} (Universal Filter) 🛑 ]=-")
-
+    # A lógica de seleção de DB já rodou lá em cima antes de importar as configs
     while True:
         prompt = input_limpo("\n📝 App Idea (or 'exit'): ")
         if prompt.lower() == 'exit': break
