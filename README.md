@@ -1,8 +1,6 @@
-# React Project Generator
+# 🔹 React Project Generator
 
-### A fast AI automation to create a React Project, along with Tailwind and Supabase Database
-
-### And if you want, you can publish your project on web with Surge (Already Automated)
+### Automated React Builder: AI-generated UI with Tailwind, Supabase backend, and one-click Surge deployment.
 
 ___
 
