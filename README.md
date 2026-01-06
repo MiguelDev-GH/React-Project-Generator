@@ -77,7 +77,21 @@ And in API Keys you will find your Supabase Key (Something like sb_publishable[.
 
 - Get your API KEY
 
-(THIS ON GOOGLE AI STUDIO, WORKING IN OPENAI)
+<br><br>
+
+<p align="center">
+  <img width="400" alt="OpenAI" src="https://github.com/user-attachments/assets/08ddd2a3-7501-49fa-a24a-54150665651e" />
+</p>
+
+- Go on https://platform.openai.com/
+
+- Go to "Api Keys Tab"
+
+<img width="216" alt="image" src="https://github.com/user-attachments/assets/ec47c0f4-a2fc-4025-bb35-72742ee165d5" />
+
+- Create an API Key
+
+- Get your API KEY
 
 ___
 
