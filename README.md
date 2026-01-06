@@ -86,7 +86,7 @@ ___
 
 *You must see this*
 
-<img width="461" height="236" alt="credentials.txt file" src="https://github.com/user-attachments/assets/b908e19e-819f-416b-8ca9-5cfa09f929de" />
+<img width="350" alt="image" src="https://github.com/user-attachments/assets/75788794-dedd-4173-9be8-7bc3d755fa8a" />
 
 ___
 
