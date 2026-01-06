@@ -1,5 +1,9 @@
 # 🔹 React Project Generator
 
+<p align="center">
+  <img height="250" alt="Project Generator" src="https://github.com/user-attachments/assets/60edeac3-36d3-4815-8465-6246c119bf2b" />
+</p>
+
 ### Automated React Builder: AI-generated UI with Tailwind, Supabase backend, and one-input Surge deployment.
 
 ___
