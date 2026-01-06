@@ -1,6 +1,5 @@
 import os
 import subprocess
-import google.generativeai as genai
 import time
 import random
 import re
@@ -9,44 +8,56 @@ import shutil
 import json
 import signal
 
-# -------------------------------- #
-# 🚀 FABRICA v6.9 (Memory Fix)
-# -------------------------------- #
+# --- VARIÁVEIS GLOBAIS (Preenchidas pelo main.py) ---
+CONFIG = {}
+genai = None
+client_openai = None
 
-AI_API_KEY = None
-SUPABASE_URL = None
-SUPABASE_KEY = None
-AI_MODEL = "models/gemini-2.5-flash-lite" 
-USE_DATABASE = False 
+# --- CORE AI FUNCTION ---
+def chamar_ia(prompt_sistema, json_mode=False):
+    global genai, client_openai
+    
+    provider = CONFIG.get("provider")
+    model_name = CONFIG.get("model")
 
-versao = "6.9-MEMORY"
-
-# --- 1. LOAD CREDENTIALS ---
-try:
-    with open('credentials.txt', 'r', encoding='utf-8') as arquivo:
-        conteudo = arquivo.read()
+    # === MOTOR GOOGLE ===
+    if provider == "google":
+        conf = {"temperature": 0.7, "max_output_tokens": 8192}
         
-        match_google = re.search(r'>\s*GOOGLE API KEY\s*=?\s*["\'](.*?)["\']', conteudo)
-        if match_google: AI_API_KEY = match_google.group(1)
+        # Tenta JSON mode se possível
+        try:
+            if json_mode: conf["response_mime_type"] = "application/json"
+            model = genai.GenerativeModel(model_name=model_name, generation_config=conf)
+            resp = model.generate_content(prompt_sistema)
+            return resp.text
+        except:
+            # Fallback (Gemma ou erro de suporte a JSON)
+            if "response_mime_type" in conf: del conf["response_mime_type"]
+            model = genai.GenerativeModel(model_name=model_name, generation_config=conf)
+            resp = model.generate_content(prompt_sistema)
+            return resp.text
 
-        match_url = re.search(r'>\s*SUPABASE URL\s*=?\s*["\'](.*?)["\']', conteudo)
-        if match_url: SUPABASE_URL = match_url.group(1)
+    # === MOTOR OPENAI ===
+    elif provider == "openai":
+        try:
+            params = {
+                "model": model_name,
+                "messages": [{"role": "system", "content": prompt_sistema}],
+                "temperature": 0.7
+            }
+            if json_mode:
+                params["response_format"] = {"type": "json_object"}
+            
+            resp = client_openai.chat.completions.create(**params)
+            return resp.choices[0].message.content
+        except Exception as e:
+            return f"// OpenAI Error: {str(e)}"
+    
+    return "// Error: No Provider Configured"
 
-        match_key = re.search(r'>\s*SUPABASE KEY\s*=?\s*["\'](.*?)["\']', conteudo)
-        if match_key: SUPABASE_KEY = match_key.group(1)
-
-        match_model = re.search(r'>\s*Agent Model\s*=?\s*["\'](.*?)["\']', conteudo)
-        if match_model: AI_MODEL = match_model.group(1)
-
-except FileNotFoundError:
-    print("\n❌ CRITICAL ERROR: File 'credentials.txt' not found.")
-    sys.exit()
-
-if not AI_API_KEY:
-    print("\n❌ ERROR: GOOGLE API KEY is missing.")
-    sys.exit()
-
-genai.configure(api_key=AI_API_KEY)
+# --- CONFIG ---
+CAMINHO_PROJETO = os.path.join(os.getcwd(), "base-app")
+USE_DATABASE = False 
 
 # --- UTILS ---
 def limpar_tela():
@@ -63,40 +74,6 @@ def encerrar_processo(processo):
         else:
             os.killpg(os.getpgid(processo.pid), signal.SIGTERM)
     except: pass
-
-# --- CONFIG ---
-CAMINHO_PROJETO = os.path.join(os.getcwd(), "base-app")
-
-model = genai.GenerativeModel(
-    model_name=AI_MODEL,
-    generation_config={"temperature": 0.7, "max_output_tokens": 8192}
-)
-
-try:
-    model_json = genai.GenerativeModel(
-        model_name=AI_MODEL,
-        generation_config={"temperature": 0.5, "response_mime_type": "application/json"}
-    )
-except:
-    model_json = model
-
-# --- DATABASE SETUP ---
-limpar_tela()
-print(f"-=[ 🏭 FACTORY {versao} (Import Guard) ]=-")
-print(f"🧠 Brain: {AI_MODEL}")
-
-while True:
-    print("🔌 Enable Database (Supabase)? (y/n)")
-    choice = input_limpo(">>> ").lower()
-    if choice == 'y':
-        if not SUPABASE_URL or not SUPABASE_KEY:
-            print("\n❌ ERROR: Supabase keys missing in credentials.txt")
-            sys.exit()
-        USE_DATABASE = True
-        break
-    elif choice == 'n':
-        USE_DATABASE = False
-        break
 
 # --- FUNÇÃO DE LIMPEZA ---
 def resetar_projeto():
@@ -125,8 +102,8 @@ def get_db_instructions():
     if USE_DATABASE:
         return f"""
     💾 SUPABASE (REAL DATABASE):
-       - URL: "{SUPABASE_URL}"
-       - KEY: "{SUPABASE_KEY}"
+       - URL: "{CONFIG['supabase_url']}"
+       - KEY: "{CONFIG['supabase_key']}"
        - Client: `import {{ createClient }} from '@supabase/supabase-js'`
         """
     else:
@@ -154,16 +131,18 @@ def planejar_arquitetura(prompt_usuario):
     3. NEVER include "src/main.jsx", "index.html".
     4. INCLUDE "src/App.jsx".
     {extra_rule}
+    
+    JSON RESPONSE FORMAT:
+    ["src/App.jsx", "src/components/Example.jsx"]
     """
     
     try:
+        texto_resp = chamar_ia(sistema, json_mode=True)
         try:
-            resp = model_json.generate_content(sistema)
-            lista_arquivos = json.loads(resp.text)
+            lista_arquivos = json.loads(texto_resp)
         except:
-            resp = model.generate_content(sistema)
-            match_json = re.search(r'\[.*\]', resp.text, re.DOTALL)
-            lista_arquivos = json.loads(match_json.group(0)) if match_json else json.loads(resp.text)
+            match_json = re.search(r'\[.*\]', texto_resp, re.DOTALL)
+            lista_arquivos = json.loads(match_json.group(0)) if match_json else []
 
         arquivos_proibidos = ["src/main.jsx", "src/main.js", "index.html", "src/index.css", "vite.config.js"]
         if not USE_DATABASE: arquivos_proibidos.append("src/lib/supabase.js")
@@ -191,12 +170,11 @@ def planejar_modificacao(pedido_usuario, lista_arquivos_existentes):
     """
     
     try:
+        texto_resp = chamar_ia(sistema, json_mode=True)
         try:
-            resp = model_json.generate_content(sistema)
-            return json.loads(resp.text)
+            return json.loads(texto_resp)
         except:
-            resp = model.generate_content(sistema)
-            match_json = re.search(r'\[.*\]', resp.text, re.DOTALL)
+            match_json = re.search(r'\[.*\]', texto_resp, re.DOTALL)
             return json.loads(match_json.group(0)) if match_json else []
     except:
         return ["src/App.jsx"]
@@ -205,7 +183,6 @@ def gerar_arquivo_especifico(arquivo_alvo, contexto_global, prompt_usuario, eh_m
     acao = "MODIFYING" if eh_modificacao else "BUILDER"
     print(f">>> [2/3] 👷 {acao}: {arquivo_alvo}...")
     
-    # --- MEMÓRIA CORRIGIDA: Se for modificação, pega o código REAL ---
     if eh_modificacao:
         codigo_antigo = contexto_global.get(arquivo_alvo, "// New File")
         prompt_foco = f"""
@@ -217,10 +194,9 @@ def gerar_arquivo_especifico(arquivo_alvo, contexto_global, prompt_usuario, eh_m
         
         INSTRUCTIONS:
         1. Apply the User Request to the OLD CODE.
-        2. KEEP THE REST OF THE CODE EXACTLY THE SAME (Do not rewrite layout unless asked).
+        2. KEEP THE REST OF THE CODE EXACTLY THE SAME.
         """
     else:
-        # Modo Criação (Usa resumo para economizar token, mas contexto suficiente)
         resumo_projeto = ""
         for path, code in contexto_global.items():
             resumo_projeto += f"\n--- FILE: {path} ---\n{code[:500]}...\n"
@@ -238,19 +214,18 @@ def gerar_arquivo_especifico(arquivo_alvo, contexto_global, prompt_usuario, eh_m
     CONTEXT:
     - {get_db_instructions()}
     
-    🛑 GOLDEN RULES (STRICT):
+    🛑 GOLDEN RULES:
     1. Output ONLY raw code.
-    2. ICONS: If you use <Github /> you MUST write `import {{ Github }} from 'lucide-react';` at the top.
-    3. ICONS: If you use <Menu /> you MUST write `import {{ Menu }} from 'lucide-react';` at the top.
-    4. CHECK IMPORTS: Never use a component/icon without importing it.
-    5. For 'src/App.jsx': MUST use `export default function App() {{ ... }}`.
+    2. IMPORT ICONS: `import {{ Menu }} from 'lucide-react';`
+    3. EXPORT DEFAULT: `export default function App() {{ ... }}`
     """
     
     for tentativa in range(2):
         try:
-            resp = model.generate_content(sistema)
-            if not resp.text: raise Exception("Empty Response")
-            codigo = resp.text.replace("```jsx", "").replace("```javascript", "").replace("```js", "").replace("```", "")
+            texto_resp = chamar_ia(sistema, json_mode=False)
+            if not texto_resp: raise Exception("Empty Response")
+            
+            codigo = texto_resp.replace("```jsx", "").replace("```javascript", "").replace("```js", "").replace("```", "")
             return codigo.strip()
         except Exception as e:
             print(f"⚠️ Error on attempt {tentativa+1} for {arquivo_alvo}: {e}")
@@ -311,12 +286,45 @@ def fazer_deploy(nome_inicial):
     subprocess.run(f"npx surge ./dist --domain {nome_atual}.surge.sh", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL)
     return f"{nome_atual}.surge.sh"
 
-def main():
+# --- PONTO DE ENTRADA DO SISTEMA ---
+def iniciar_sistema(config_externa):
+    """Esta função é chamada pelo main.py"""
+    global CONFIG, genai, client_openai, USE_DATABASE
+    
+    CONFIG = config_externa
+    limpar_tela()
+    print(f"-=[ 🏭 FACTORY 7.1 (Modular) ]=-")
+    print(f"🧠 Engine: {CONFIG['provider'].upper()} | {CONFIG['model']}")
+    
+    # Inicializa Bibliotecas baseado na config recebida
+    if CONFIG['provider'] == 'google':
+        import google.generativeai as lib_genai
+        genai = lib_genai
+        genai.configure(api_key=CONFIG['google_key'])
+        
+    elif CONFIG['provider'] == 'openai':
+        from openai import OpenAI
+        client_openai = OpenAI(api_key=CONFIG['openai_key'])
+
+    # Loop Principal
+    while True:
+        print("🔌 Enable Database (Supabase)? (y/n)")
+        choice = input_limpo(">>> ").lower()
+        if choice == 'y':
+            if not CONFIG['supabase_url'] or not CONFIG['supabase_key']:
+                print("\n❌ ERROR: Supabase keys missing in credentials.txt")
+                sys.exit()
+            USE_DATABASE = True
+            break
+        elif choice == 'n':
+            USE_DATABASE = False
+            break
+
     while True:
         prompt_inicial = input_limpo("\n📝 App Idea (or 'exit'): ")
         if prompt_inicial.lower() == 'exit': break
         
-        resetar_projeto() # FAXINA INICIAL
+        resetar_projeto() # FAXINA
 
         arquivos_atuais = planejar_arquitetura(prompt_inicial)
         print(f"📋 Plan: {arquivos_atuais}")
@@ -356,7 +364,6 @@ def main():
                     if arq not in arquivos_atuais: arquivos_atuais.append(arq)
                 
                 for arquivo in arquivos_para_editar:
-                    # AQUI ESTÁ A MÁGICA: Passamos eh_modificacao=True
                     novo_codigo = gerar_arquivo_especifico(arquivo, contexto_projeto, pedido_mudanca, eh_modificacao=True)
                     contexto_projeto[arquivo] = novo_codigo
                     salvar_arquivo_caminho_custom(arquivo, novo_codigo)
@@ -376,5 +383,8 @@ def main():
                 encerrar_processo(processo_preview)
                 sys.exit()
 
+# Mantém compatibilidade caso rode fabrica.py direto (modo legacy)
 if __name__ == "__main__":
-    main()
+    print("⚠️  AVISO: Por favor, execute 'main.py' em vez deste arquivo.")
+    print("   Isso garante a verificação correta de credenciais e bibliotecas.")
+    sys.exit()

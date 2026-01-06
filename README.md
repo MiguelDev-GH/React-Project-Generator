@@ -19,11 +19,11 @@ ___
 ### Credentials (4 minutes)
 
 > [!NOTE]
-> This IA use Google AI Studio models to program and a Supabase Account. The main file needs Supabase Project URL, Supabse Project KEY and API Key from Google
+> This AI use API AI models to program and a Supabase Account.
 > So save this informations:
 > - Supabase URL
 > - Supabase KEY
-> - Google AI Studio API Key
+> - API Key (Google or OpenAI)
 
 <br><br>
 
@@ -77,6 +77,8 @@ And in API Keys you will find your Supabase Key (Something like sb_publishable[.
 
 - Get your API KEY
 
+(THIS ON GOOGLE AI STUDIO, WORKING IN OPENAI)
+
 ___
 
 > [!IMPORTANT]
@@ -90,4 +92,4 @@ ___
 
 ### Execute
 
-▶ To run the generator, just execute `fabrica.py`
+▶ To run the generator, just execute `main.py`
