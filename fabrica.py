@@ -5,12 +5,12 @@ import time
 import random
 import re
 import sys
-import shutil # Biblioteca para deletar pastas
+import shutil
 import json
 import signal
 
 # -------------------------------- #
-# 🚀 FABRICA v6.8 (Reset & Sanitize)
+# 🚀 FABRICA v6.9 (Memory Fix)
 # -------------------------------- #
 
 AI_API_KEY = None
@@ -19,7 +19,7 @@ SUPABASE_KEY = None
 AI_MODEL = "models/gemini-2.5-flash-lite" 
 USE_DATABASE = False 
 
-versao = "6.8-CLEAN"
+versao = "6.9-MEMORY"
 
 # --- 1. LOAD CREDENTIALS ---
 try:
@@ -82,7 +82,7 @@ except:
 
 # --- DATABASE SETUP ---
 limpar_tela()
-print(f"-=[ 🏭 FACTORY {versao} (Auto-Reset) ]=-")
+print(f"-=[ 🏭 FACTORY {versao} (Import Guard) ]=-")
 print(f"🧠 Brain: {AI_MODEL}")
 
 while True:
@@ -98,34 +98,27 @@ while True:
         USE_DATABASE = False
         break
 
-# --- FUNÇÃO DE LIMPEZA (FACTORY RESET) ---
+# --- FUNÇÃO DE LIMPEZA ---
 def resetar_projeto():
     print(">>> [🧹] FACTORY RESET: Cleaning old files...")
     src_path = os.path.join(CAMINHO_PROJETO, "src")
+    if not os.path.exists(src_path): return
     
-    # Pastas para deletar (Garante que começamos do zero)
     pastas_para_remover = ["components", "lib", "utils", "hooks", "pages", "context"]
     
     for item in os.listdir(src_path):
         item_path = os.path.join(src_path, item)
-        
-        # Se for pasta gerada pela IA, deleta
         if os.path.isdir(item_path) and item in pastas_para_remover:
-            try:
-                shutil.rmtree(item_path)
+            try: shutil.rmtree(item_path)
             except: pass
-            
-        # Se for arquivo gerado (exceto os templates sagrados)
         elif os.path.isfile(item_path):
             if item not in ["main.jsx", "index.css", "vite-env.d.ts", "App.css"]:
                 if item == "App.jsx":
-                    # Reseta o App.jsx para um estado mínimo válido para não quebrar o Vite
                     with open(item_path, "w", encoding="utf-8") as f:
                         f.write("export default function App() { return <div>Loading...</div> }")
                 else:
-                    # Deleta outros arquivos soltos (ex: api.js)
                     os.remove(item_path)
-    print("✅ Project Cleaned (GitHub Template State).")
+    print("✅ Project Cleaned.")
 
 # --- PROMPTS ---
 def get_db_instructions():
@@ -135,12 +128,11 @@ def get_db_instructions():
        - URL: "{SUPABASE_URL}"
        - KEY: "{SUPABASE_KEY}"
        - Client: `import {{ createClient }} from '@supabase/supabase-js'`
-       - Init: `const supabase = createClient(URL, KEY)`
         """
     else:
         return """
     💾 STORAGE MODE: [NO DATABASE]
-    🛑 STRICT PROHIBITION: DO NOT import supabase, DO NOT use fetch().
+    🛑 STRICT PROHIBITION: DO NOT import supabase.
     ✅ REQUIREMENT: Use HARDCODED Arrays of Objects (Mock Data).
         """
 
@@ -161,7 +153,6 @@ def planejar_arquitetura(prompt_usuario):
     2. Max 6 files.
     3. NEVER include "src/main.jsx", "index.html".
     4. INCLUDE "src/App.jsx".
-    5. Paths MUST start with 'src/' (e.g., 'src/components/Header.jsx').
     {extra_rule}
     """
     
@@ -175,8 +166,7 @@ def planejar_arquitetura(prompt_usuario):
             lista_arquivos = json.loads(match_json.group(0)) if match_json else json.loads(resp.text)
 
         arquivos_proibidos = ["src/main.jsx", "src/main.js", "index.html", "src/index.css", "vite.config.js"]
-        if not USE_DATABASE:
-            arquivos_proibidos.append("src/lib/supabase.js")
+        if not USE_DATABASE: arquivos_proibidos.append("src/lib/supabase.js")
 
         lista_filtrada = [arq for arq in lista_arquivos if arq not in arquivos_proibidos]
         if "src/App.jsx" not in lista_filtrada: lista_filtrada.append("src/App.jsx")
@@ -198,7 +188,6 @@ def planejar_modificacao(pedido_usuario, lista_arquivos_existentes):
     RULES:
     1. Return ONLY a JSON Array of strings (filenames).
     2. Select ONLY the files that strictly need changes.
-    3. If a NEW file is needed, add it to the list.
     """
     
     try:
@@ -216,66 +205,65 @@ def gerar_arquivo_especifico(arquivo_alvo, contexto_global, prompt_usuario, eh_m
     acao = "MODIFYING" if eh_modificacao else "BUILDER"
     print(f">>> [2/3] 👷 {acao}: {arquivo_alvo}...")
     
-    resumo_projeto = ""
-    for path, code in contexto_global.items():
-        resumo_projeto += f"\n--- FILE: {path} ---\n{code[:800]}...\n"
-
-    foco_prompt = f"User Change Request: {prompt_usuario}" if eh_modificacao else f"User Goal: {prompt_usuario}"
+    # --- MEMÓRIA CORRIGIDA: Se for modificação, pega o código REAL ---
+    if eh_modificacao:
+        codigo_antigo = contexto_global.get(arquivo_alvo, "// New File")
+        prompt_foco = f"""
+        TASK: EDIT THE FILE '{arquivo_alvo}'.
+        USER REQUEST: "{prompt_usuario}"
+        
+        🛑 OLD CODE (BASE):
+        {codigo_antigo}
+        
+        INSTRUCTIONS:
+        1. Apply the User Request to the OLD CODE.
+        2. KEEP THE REST OF THE CODE EXACTLY THE SAME (Do not rewrite layout unless asked).
+        """
+    else:
+        # Modo Criação (Usa resumo para economizar token, mas contexto suficiente)
+        resumo_projeto = ""
+        for path, code in contexto_global.items():
+            resumo_projeto += f"\n--- FILE: {path} ---\n{code[:500]}...\n"
+        
+        prompt_foco = f"""
+        TASK: Write code for file: '{arquivo_alvo}'.
+        USER GOAL: "{prompt_usuario}"
+        EXISTING FILES: {resumo_projeto}
+        """
 
     sistema = f"""
     ROLE: React Expert.
-    TASK: Write code for file: '{arquivo_alvo}'.
+    {prompt_foco}
     
     CONTEXT:
-    - {foco_prompt}
     - {get_db_instructions()}
     
-    EXISTING FILES:
-    {resumo_projeto}
-    
-    RULES:
+    🛑 GOLDEN RULES (STRICT):
     1. Output ONLY raw code.
-    2. Use 'lucide-react' for icons.
-    3. Use 'tailwindcss' classes.
-    4. For 'src/App.jsx': MUST use `export default function App() {{ ... }}`.
-    5. DO NOT nest folders like 'src/src'. Use flat structure inside src/components.
+    2. ICONS: If you use <Github /> you MUST write `import {{ Github }} from 'lucide-react';` at the top.
+    3. ICONS: If you use <Menu /> you MUST write `import {{ Menu }} from 'lucide-react';` at the top.
+    4. CHECK IMPORTS: Never use a component/icon without importing it.
+    5. For 'src/App.jsx': MUST use `export default function App() {{ ... }}`.
     """
     
-    # Lógica de Retry (Tenta 2 vezes se der erro)
     for tentativa in range(2):
         try:
             resp = model.generate_content(sistema)
-            if not resp.text: raise Exception("Empty Response from AI")
-            
+            if not resp.text: raise Exception("Empty Response")
             codigo = resp.text.replace("```jsx", "").replace("```javascript", "").replace("```js", "").replace("```", "")
             return codigo.strip()
-            
         except Exception as e:
             print(f"⚠️ Error on attempt {tentativa+1} for {arquivo_alvo}: {e}")
-            time.sleep(2) 
+            time.sleep(2)
             
     return f"// CRITICAL ERROR: {str(e)}"
 
 def salvar_arquivo_caminho_custom(caminho_relativo, codigo):
-    # --- SANITIZAÇÃO DE CAMINHOS (CORREÇÃO DE PASTAS) ---
-    
-    # 1. Remove menção ao diretório raiz se a IA colocar
-    caminho_limpo = caminho_relativo.replace("base-app/", "").replace("./", "")
-    
-    # 2. Correção de caminho absoluto windows
-    caminho_limpo = caminho_limpo.replace("\\", "/")
-
-    # 3. Remove duplicidade de src (O ERRO COMUM DA IA)
-    # Ex: src/src/App.jsx vira src/App.jsx
-    while "src/src/" in caminho_limpo:
-        caminho_limpo = caminho_limpo.replace("src/src/", "src/")
-
-    # 4. Garante que começa com src/ (se a IA mandar só "components/Button.jsx")
-    if not caminho_limpo.startswith("src/"):
-        caminho_limpo = f"src/{caminho_limpo}"
+    caminho_limpo = caminho_relativo.replace("base-app/", "").replace("./", "").replace("\\", "/")
+    while "src/src/" in caminho_limpo: caminho_limpo = caminho_limpo.replace("src/src/", "src/")
+    if not caminho_limpo.startswith("src/"): caminho_limpo = f"src/{caminho_limpo}"
 
     caminho_completo = os.path.join(CAMINHO_PROJETO, caminho_limpo)
-    
     pasta = os.path.dirname(caminho_completo)
     if not os.path.exists(pasta): os.makedirs(pasta)
     
@@ -294,10 +282,7 @@ def verificar_dependencias_global(contexto_global):
     for lib in imports:
         if lib.startswith(".") or lib.startswith("/"): continue
         partes = lib.split("/")
-        if lib.startswith("@") and len(partes) > 1:
-            root_lib = f"{partes[0]}/{partes[1]}"
-        else:
-            root_lib = partes[0]
+        root_lib = f"{partes[0]}/{partes[1]}" if lib.startswith("@") and len(partes) > 1 else partes[0]
             
         if root_lib not in libs_obrigatorias and root_lib not in blacklist:
             para_instalar.append(root_lib)
@@ -307,7 +292,6 @@ def verificar_dependencias_global(contexto_global):
         print(f"Installing: {para_instalar}")
         subprocess.run(f"npm install {' '.join(para_instalar)}", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL)
 
-# --- DEPLOY & PREVIEW ---
 def verificar_dominio_http(slug):
     dominio = f"http://{slug}.surge.sh"
     try:
@@ -332,10 +316,8 @@ def main():
         prompt_inicial = input_limpo("\n📝 App Idea (or 'exit'): ")
         if prompt_inicial.lower() == 'exit': break
         
-        # --- PASSO 0: FACTORY RESET (LIMPEZA) ---
-        resetar_projeto()
+        resetar_projeto() # FAXINA INICIAL
 
-        # 1. Criação Inicial
         arquivos_atuais = planejar_arquitetura(prompt_inicial)
         print(f"📋 Plan: {arquivos_atuais}")
         
@@ -347,7 +329,6 @@ def main():
             
         verificar_dependencias_global(contexto_projeto)
         
-        # 2. Loop de Modificação
         processo_preview = None
         
         while True:
@@ -375,6 +356,7 @@ def main():
                     if arq not in arquivos_atuais: arquivos_atuais.append(arq)
                 
                 for arquivo in arquivos_para_editar:
+                    # AQUI ESTÁ A MÁGICA: Passamos eh_modificacao=True
                     novo_codigo = gerar_arquivo_especifico(arquivo, contexto_projeto, pedido_mudanca, eh_modificacao=True)
                     contexto_projeto[arquivo] = novo_codigo
                     salvar_arquivo_caminho_custom(arquivo, novo_codigo)
@@ -387,11 +369,9 @@ def main():
                 print(f"\n🚀 LIVE: https://{link}\n")
                 input("Press ENTER...")
                 break
-                
             elif opcao == "3":
                 encerrar_processo(processo_preview)
                 break
-                
             elif opcao == "4":
                 encerrar_processo(processo_preview)
                 sys.exit()
