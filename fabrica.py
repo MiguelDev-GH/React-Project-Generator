@@ -7,37 +7,32 @@ import sys
 import shutil
 import json
 import signal
+import main
 
-# --- VARIÁVEIS GLOBAIS (Preenchidas pelo main.py) ---
 CONFIG = {}
 genai = None
 client_openai = None
 
-# --- CORE AI FUNCTION ---
 def chamar_ia(prompt_sistema, json_mode=False):
     global genai, client_openai
     
     provider = CONFIG.get("provider")
     model_name = CONFIG.get("model")
 
-    # === MOTOR GOOGLE ===
     if provider == "google":
         conf = {"temperature": 0.7, "max_output_tokens": 8192}
         
-        # Tenta JSON mode se possível
         try:
             if json_mode: conf["response_mime_type"] = "application/json"
             model = genai.GenerativeModel(model_name=model_name, generation_config=conf)
             resp = model.generate_content(prompt_sistema)
             return resp.text
         except:
-            # Fallback (Gemma ou erro de suporte a JSON)
             if "response_mime_type" in conf: del conf["response_mime_type"]
             model = genai.GenerativeModel(model_name=model_name, generation_config=conf)
             resp = model.generate_content(prompt_sistema)
             return resp.text
 
-    # === MOTOR OPENAI ===
     elif provider == "openai":
         try:
             params = {
@@ -55,11 +50,9 @@ def chamar_ia(prompt_sistema, json_mode=False):
     
     return "// Error: No Provider Configured"
 
-# --- CONFIG ---
 CAMINHO_PROJETO = os.path.join(os.getcwd(), "base-app")
 USE_DATABASE = False 
 
-# --- UTILS ---
 def limpar_tela():
     os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -75,9 +68,8 @@ def encerrar_processo(processo):
             os.killpg(os.getpgid(processo.pid), signal.SIGTERM)
     except: pass
 
-# --- FUNÇÃO DE LIMPEZA ---
 def resetar_projeto():
-    print(">>> [🧹] FACTORY RESET: Cleaning old files...")
+    print(f"{main.MAGENTA}>>> [🧹] FACTORY RESET: {main.RESET}Cleaning old files...")
     src_path = os.path.join(CAMINHO_PROJETO, "src")
     if not os.path.exists(src_path): return
     
@@ -95,9 +87,8 @@ def resetar_projeto():
                         f.write("export default function App() { return <div>Loading...</div> }")
                 else:
                     os.remove(item_path)
-    print("✅ Project Cleaned.")
+    print(f"{main.GREEN}✅ Project Cleaned.{main.RESET}")
 
-# --- PROMPTS ---
 def get_db_instructions():
     if USE_DATABASE:
         return f"""
@@ -114,7 +105,7 @@ def get_db_instructions():
         """
 
 def planejar_arquitetura(prompt_usuario):
-    print("\n>>> [1/3] 🧠 ARCHITECT: Blueprinting...")
+    print(f"\n{main.CYAN}>>> [1/3] 🧠 ARCHITECT: Blueprinting...{main.RESET}\n")
     
     if USE_DATABASE:
         extra_rule = '5. Use "src/lib/supabase.js" for DB connection.'
@@ -152,11 +143,11 @@ def planejar_arquitetura(prompt_usuario):
         return lista_filtrada
 
     except Exception as e:
-        print(f"⚠️ Architect Error: {e}. Fallback to basic.")
+        print(f"{main.YELLOW}⚠️ Architect Error: {main.RED} {e}. {main.RESET} Fallback to basic.")
         return ["src/App.jsx"]
 
 def planejar_modificacao(pedido_usuario, lista_arquivos_existentes):
-    print("\n>>> [🔍] MAINTENANCE AGENT: Analyzing impact...")
+    print(f"\n{main.CYAN}>>> [🔍] MAINTENANCE AGENT: Analyzing impact...{main.RESET}")
     
     sistema = f"""
     ROLE: Code Maintenance Expert.
@@ -181,7 +172,7 @@ def planejar_modificacao(pedido_usuario, lista_arquivos_existentes):
 
 def gerar_arquivo_especifico(arquivo_alvo, contexto_global, prompt_usuario, eh_modificacao=False):
     acao = "MODIFYING" if eh_modificacao else "BUILDER"
-    print(f">>> [2/3] 👷 {acao}: {arquivo_alvo}...")
+    print(f"{main.YELLOW}>>> [2/3] 👷 {acao}: {main.RESET}{arquivo_alvo}...")
     
     if eh_modificacao:
         codigo_antigo = contexto_global.get(arquivo_alvo, "// New File")
@@ -228,7 +219,7 @@ def gerar_arquivo_especifico(arquivo_alvo, contexto_global, prompt_usuario, eh_m
             codigo = texto_resp.replace("```jsx", "").replace("```javascript", "").replace("```js", "").replace("```", "")
             return codigo.strip()
         except Exception as e:
-            print(f"⚠️ Error on attempt {tentativa+1} for {arquivo_alvo}: {e}")
+            print(f"{main.RED}⚠️ Error on attempt {main.RESET}{tentativa+1} for {arquivo_alvo}: {e}")
             time.sleep(2)
             
     return f"// CRITICAL ERROR: {str(e)}"
@@ -246,7 +237,7 @@ def salvar_arquivo_caminho_custom(caminho_relativo, codigo):
         f.write(codigo)
 
 def verificar_dependencias_global(contexto_global):
-    print("\n>>> [3/3] 📦 DEPENDENCIES...")
+    print(f"\n{main.BLUE}>>> [3/3] 📦 DEPENDENCIES...{main.RESET}")
     libs_obrigatorias = ['react', 'react-dom', 'vite', '@vitejs/plugin-react', 'tailwindcss', 'postcss', 'autoprefixer', 'lucide-react']
     blacklist = ['react-context', 'fs', 'path', 'os']
 
@@ -270,13 +261,14 @@ def verificar_dependencias_global(contexto_global):
 def verificar_dominio_http(slug):
     dominio = f"http://{slug}.surge.sh"
     try:
+        import urllib.request
         req = urllib.request.Request(dominio, method='HEAD')
         urllib.request.urlopen(req)
         return True 
     except: return False
 
 def fazer_deploy(nome_inicial):
-    print("\n>>> [BUILDING]...")
+    print(f"\n{main.MAGENTA}>>> [BUILDING]...{main.RESET}")
     subprocess.run("npm run build", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL)
     
     nome_atual = nome_inicial.replace(" ", "-").lower()
@@ -286,17 +278,17 @@ def fazer_deploy(nome_inicial):
     subprocess.run(f"npx surge ./dist --domain {nome_atual}.surge.sh", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL)
     return f"{nome_atual}.surge.sh"
 
-# --- PONTO DE ENTRADA DO SISTEMA ---
 def iniciar_sistema(config_externa):
-    """Esta função é chamada pelo main.py"""
     global CONFIG, genai, client_openai, USE_DATABASE
     
     CONFIG = config_externa
     limpar_tela()
-    print(f"-=[ 🏭 FACTORY 7.1 (Modular) ]=-")
-    print(f"🧠 Engine: {CONFIG['provider'].upper()} | {CONFIG['model']}")
     
-    # Inicializa Bibliotecas baseado na config recebida
+    print(f"{main.CYAN}╔════════════════════════════════════════════════════╗{main.RESET}")
+    print(f"{main.CYAN}║                   ONLINE GENERATOR                 ║{main.RESET}")
+    print(f"{main.CYAN}╚════════════════════════════════════════════════════╝{main.RESET}\n")
+    print(f"{main.MAGENTA}Model in use: {main.YELLOW}{CONFIG['provider'].upper()} | {CONFIG['model']}{main.RESET}")
+    
     if CONFIG['provider'] == 'google':
         import google.generativeai as lib_genai
         genai = lib_genai
@@ -306,9 +298,8 @@ def iniciar_sistema(config_externa):
         from openai import OpenAI
         client_openai = OpenAI(api_key=CONFIG['openai_key'])
 
-    # Loop Principal
     while True:
-        print("🔌 Enable Database (Supabase)? (y/n)")
+        print(f"\n🔌 {main.GREEN}Enable Database {main.CYAN}(Supabase){main.RESET}? (y/n)")
         choice = input_limpo(">>> ").lower()
         if choice == 'y':
             if not CONFIG['supabase_url'] or not CONFIG['supabase_key']:
@@ -321,13 +312,13 @@ def iniciar_sistema(config_externa):
             break
 
     while True:
-        prompt_inicial = input_limpo("\n📝 App Idea (or 'exit'): ")
+        prompt_inicial = input_limpo(f"\n{main.YELLOW}📝 App Idea {main.RED}(or 'exit'){main.RESET}: ")
         if prompt_inicial.lower() == 'exit': break
         
-        resetar_projeto() # FAXINA
+        resetar_projeto() 
 
         arquivos_atuais = planejar_arquitetura(prompt_inicial)
-        print(f"📋 Plan: {arquivos_atuais}")
+        print(f"📋 Plan: {main.CYAN}{arquivos_atuais}{main.RESET}\n")
         
         contexto_projeto = {}
         for arquivo in arquivos_atuais:
@@ -342,21 +333,21 @@ def iniciar_sistema(config_externa):
         while True:
             if processo_preview: encerrar_processo(processo_preview)
             
-            print("\n✨ App Ready. Opening Preview...")
+            print(f"\n{main.GREEN}✨ App Ready. Opening Preview...{main.RESET}")
             print("👉 http://localhost:5173")
             processo_preview = subprocess.Popen("npm run dev -- --open", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
             
-            print("\n" + "="*30)
-            print(" [1] ✏️  MODIFY")
-            print(" [2] 🚀 PUBLISH")
-            print(" [3] 🔙 NEW PROJECT")
-            print(" [4] ❌ EXIT")
-            print("="*30)
+            print("\n" + f"{main.CYAN}={main.RESET}"*30)
+            print(f" {main.GREEN}[1] ✏️  MODIFY{main.RESET}")
+            print(f" {main.MAGENTA}[2] 🚀 PUBLISH{main.RESET}")
+            print(f" {main.BLUE}[3] 🔙 NEW PROJECT{main.RESET}")
+            print(f" {main.RED}[4] ❌ EXIT{main.RESET}")
+            print(f"{main.CYAN}={main.RESET}"*30)
             
             opcao = input_limpo(">>> ")
             
             if opcao == "1":
-                pedido_mudanca = input_limpo("\n✏️  Change Request: ")
+                pedido_mudanca = input_limpo(f"\n{main.YELLOW}✏️  Change Request: {main.RESET}")
                 arquivos_para_editar = planejar_modificacao(pedido_mudanca, arquivos_atuais)
                 print(f"🎯 Files to Edit: {arquivos_para_editar}")
                 
@@ -368,12 +359,12 @@ def iniciar_sistema(config_externa):
                     contexto_projeto[arquivo] = novo_codigo
                     salvar_arquivo_caminho_custom(arquivo, novo_codigo)
                 
-                print("✅ Done! Reloading...")
+                print(f"{main.GREEN}✅ Done! Reloading...{main.RESET}")
                 
             elif opcao == "2":
                 encerrar_processo(processo_preview)
                 link = fazer_deploy(prompt_inicial[:15])
-                print(f"\n🚀 LIVE: https://{link}\n")
+                print(f"\n{main.GREEN}🚀 LIVE: https://{link}{main.RESET}\n")
                 input("Press ENTER...")
                 break
             elif opcao == "3":
@@ -383,8 +374,6 @@ def iniciar_sistema(config_externa):
                 encerrar_processo(processo_preview)
                 sys.exit()
 
-# Mantém compatibilidade caso rode fabrica.py direto (modo legacy)
 if __name__ == "__main__":
     print("⚠️  AVISO: Por favor, execute 'main.py' em vez deste arquivo.")
-    print("   Isso garante a verificação correta de credenciais e bibliotecas.")
     sys.exit()

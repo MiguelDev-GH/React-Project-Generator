@@ -10,14 +10,10 @@ ___
 
 # Dependencies
 
-### File Strucutre (10 seconds):
-
 - To python
 
 ```
-pip install google-generativeai
-pip install ollama
-pip install openai 
+pip install google-generativeai ollama openai
 ```
 
 

@@ -4,7 +4,7 @@ import re
 import time
 import subprocess
 import importlib.util
-import shutil # Necessário para deletar pastas
+import shutil 
 
 # --- TERMINAL COLORS ---
 GREEN = "\033[92m"
@@ -48,9 +48,14 @@ def load_credentials():
         "supabase_url": None,
         "supabase_key": None,
         "model": "models/gemini-2.5-flash-lite", 
+        "local_model": None, # Adicionado para modelo local
         "provider": "google",
         "generic_key": None
     }
+
+    # Busca > MODEL (Para o agente local)
+    match_local = re.search(r'>\s*MODEL\s*=?\s*["\'](.*?)["\']', content)
+    if match_local: config["local_model"] = match_local.group(1)
 
     match_generic = re.search(r'>\s*API KEY\s*=?\s*["\'](.*?)["\']', content)
     if match_generic: config["generic_key"] = match_generic.group(1)
@@ -121,7 +126,6 @@ def validate_environment(config):
 
     return True
 
-# --- FUNÇÃO DE RESET (NOVA) ---
 def executar_reset_template():
     src_path = os.path.join(PROJECT_PATH, "src")
     
@@ -131,24 +135,21 @@ def executar_reset_template():
         
     print(f"\n{YELLOW}>>> Cleaning 'src' folder...{RESET}")
     
-    # 1. Deletar tudo (pastas e arquivos soltos indesejados)
     for item in os.listdir(src_path):
         item_path = os.path.join(src_path, item)
-        # Não deleta os arquivos sagrados ainda, vamos sobrescrever depois
         if os.path.isdir(item_path):
             try:
-                shutil.rmtree(item_path) # Deleta components, lib, hooks, etc
+                shutil.rmtree(item_path)
                 print(f"    - Deleted folder: {item}")
             except Exception as e:
                 print(f"    - Error deleting {item}: {e}")
         elif os.path.isfile(item_path):
             if item not in ["App.jsx", "main.jsx", "index.css", "vite-env.d.ts"]:
-                os.remove(item_path) # Deleta api.js, setup.js, etc
+                os.remove(item_path)
                 print(f"    - Deleted file: {item}")
 
     print(f"{YELLOW}>>> Restoring Base Template Files...{RESET}")
 
-    # 2. Restaurar App.jsx
     app_code = """export default function App() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -161,14 +162,12 @@ def executar_reset_template():
     with open(os.path.join(src_path, "App.jsx"), "w", encoding="utf-8") as f:
         f.write(app_code)
 
-    # 3. Restaurar index.css
     css_code = """@tailwind base;
 @tailwind components;
 @tailwind utilities;"""
     with open(os.path.join(src_path, "index.css"), "w", encoding="utf-8") as f:
         f.write(css_code)
 
-    # 4. Restaurar main.jsx
     main_code = """import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
@@ -185,17 +184,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     print_status("Template Reset Successfully!", "OK")
     time.sleep(1)
 
-# --- MENU PRINCIPAL ---
 def main():
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print(f"{CYAN}╔════════════════════════════════════════════════════╗{RESET}")
-        print(f"{CYAN}║              REACT PROJECT GENERATOR               ║{RESET}")
+        print(f"{CYAN}║         REACT FACTORY LAUNCHER v7.9                ║{RESET}")
         print(f"{CYAN}╚════════════════════════════════════════════════════╝{RESET}")
         
         print(f"\n{YELLOW}Select Option:{RESET}\n")
         
-        print(f"   {GREEN}[1] 🏠 LOCAL AGENT{RESET}    (Llama 3 | Offline)")
+        print(f"   {GREEN}[1] 🏠 LOCAL AGENT{RESET}    (Ollama | Offline)")
         print(f"   {MAGENTA}[2] ☁️  CLOUD AGENT{RESET}    (Google/OpenAI | Online)")
         print(f"   {BLUE}[3] 🧹 RESET TEMPLATE{RESET}  (Clean Project Folder)")
         print(f"   {RED}[4] ❌ EXIT{RESET}")
@@ -206,17 +204,30 @@ def main():
         # === OPÇÃO 1: LOCAL ===
         if choice == "1":
             print(f"\n{GREEN}>>> Initializing Local Environment...{RESET}")
+            
+            # 1. Verifica Instalação
             if not check_library("ollama"):
                 print_status("Library 'ollama' missing.", "ERROR")
                 print(f"👉 Run: {YELLOW}pip install ollama{RESET}")
                 input("\nPress ENTER to continue...")
                 continue
+
+            # 2. Verifica Credenciais (MODELO)
+            config_raw = load_credentials()
+            if not config_raw or not config_raw.get("local_model"):
+                print_status("Missing 'MODEL' in credentials.txt", "ERROR")
+                print(f"👉 Add line: {YELLOW}> MODEL = \"llama3.2\"{RESET}")
+                input("\nPress ENTER to continue...")
+                continue
+            
+            local_model_name = config_raw["local_model"]
+            print_status(f"Target Local Model: {local_model_name}", "INFO")
             
             time.sleep(1)
             try:
                 import fabrica_local
-                fabrica_local.iniciar_sistema_local()
-                # Não damos break aqui para permitir que o usuário volte ao menu se quiser
+                # Passa o modelo lido para o script local
+                fabrica_local.iniciar_sistema_local(local_model_name)
             except ImportError:
                 print_status("Error: 'fabrica_local.py' not found.", "ERROR")
                 input("\nPress ENTER to continue...")
@@ -245,9 +256,12 @@ def main():
 
             try:
                 import fabrica
-                fabrica.start_system(config)
+                fabrica.iniciar_sistema(config)
             except ImportError:
                 print_status("Error: 'fabrica.py' not found.", "ERROR")
+                input("\nPress ENTER to continue...")
+            except AttributeError:
+                print_status("Error: Function 'iniciar_sistema' not found in fabrica.py.", "ERROR")
                 input("\nPress ENTER to continue...")
             except Exception as e:
                 print_status(f"Fatal Cloud Error: {e}", "ERROR")
