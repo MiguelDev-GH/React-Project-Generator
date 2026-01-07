@@ -14,13 +14,18 @@ ___
 
 - To python
 
-` pip install google-generativeai `
+```
+pip install google-generativeai
+pip install ollama
+pip install openai 
+```
+
 
 ### Credentials (4 minutes)
 
 > [!NOTE]
-> This AI use API AI models to program and a Supabase Account.
-> So save this informations:
+> Can be execute using Local AI or Cloud AI
+> If using Cloud AI, save this informations:
 > - Supabase URL
 > - Supabase KEY
 > - API Key (Google or OpenAI)
@@ -66,6 +71,10 @@ In Data API you will find the URL from your project
 And in API Keys you will find your Supabase Key (Something like sb_publishable[...] or sb_secret[...])
 
 <br><br>
+
+# Using Cloud AI
+
+<br>
 
 <p align="center">
   <img width="600" alt="Google AI Studio" src="https://github.com/user-attachments/assets/aa5020f4-8c12-40ea-b9c7-f517d10b0c87" />
