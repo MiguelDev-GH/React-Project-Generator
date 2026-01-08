@@ -16,20 +16,37 @@ except ImportError:
 
 PROJECT_PATH = os.path.join(os.getcwd(), "base-app")
 USE_DATABASE = False 
-LOCAL_MODEL = "llama3.2" # Valor padrão (será sobrescrito pelo main.py)
+# Mudei o default para um modelo melhor. Se não tiver, ele avisa.
+LOCAL_MODEL = "qwen2.5-coder:7b" 
 
-def call_local_ai(system_prompt, user_prompt):
+def call_local_ai(system_prompt, user_prompt, json_mode=False):
     if not ollama:
         return "// Error: 'ollama' library not installed."
 
     try:
-        response = ollama.chat(model=LOCAL_MODEL, messages=[
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_prompt},
-        ])
+        model_to_use = LOCAL_MODEL
+        try:
+            # Verifica se o modelo existe, senão fallback
+            ollama.show(LOCAL_MODEL)
+        except:
+            model_to_use = "llama3.2"
+            
+        options = {
+            "temperature": 0.2 if json_mode else 0.6,
+            "num_ctx": 8192 
+        }
+        
+        response = ollama.chat(
+            model=model_to_use, 
+            messages=[
+                {'role': 'system', 'content': system_prompt},
+                {'role': 'user', 'content': user_prompt},
+            ],
+            options=options
+        )
         return response['message']['content']
     except Exception as e:
-        return f"// Local Llama Error: {str(e)}"
+        return f"// Local AI Error: {str(e)}"
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -47,7 +64,7 @@ def kill_process(process):
     except: pass
 
 def reset_project():
-    print(f"{main.MAGENTA}>>> [🧹] FACTORY RESET: {main.RESET}Cleaning old files...")
+    print(f"{main.MAGENTA}>>> [🧹] FACTORY RESET: {main.RESET}Cleaning old files...\n")
     src_path = os.path.join(PROJECT_PATH, "src")
     if not os.path.exists(src_path): return
     
@@ -67,147 +84,204 @@ def reset_project():
                     os.remove(item_path)
     print(f"{main.GREEN}✅ Project Cleaned.{main.RESET}")
 
+def extract_json_array(text):
+    """
+    Extrator robusto: Tenta JSON -> Tenta Regex JSON -> Tenta Regex Arquivos
+    """
+    text = text.strip()
+    
+    # 1. Tentativa JSON limpo
+    try:
+        # Busca o primeiro '[' e o último ']'
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+    except:
+        pass
+
+    # 2. Tentativa Limpeza Markdown
+    try:
+        cleaned = text.replace("```json", "").replace("```", "").strip()
+        # Se não começar com [, tenta achar
+        if not cleaned.startswith("["):
+            start = cleaned.find("[")
+            end = cleaned.rfind("]")
+            if start != -1 and end != -1:
+                cleaned = cleaned[start:end+1]
+        return json.loads(cleaned)
+    except:
+        pass
+
+    # 3. FALLBACK SUPREMO: Regex para pegar caminhos de arquivos
+    # Se o modelo responder com lista ("- src/components/Header.jsx")
+    print(f"{main.YELLOW}⚠️  JSON Parsing failed. Scanning text for filenames...{main.RESET}")
+    found_files = re.findall(r'(src/[a-zA-Z0-9_\-\/]+\.jsx)', text)
+    if found_files:
+        return list(set(found_files)) # Remove duplicatas
+
+    return None
+
 def sanitizar_codigo_agressivo(code, filename):
+    code = re.sub(r'^```[a-zA-Z]*\n', '', code)
+    code = re.sub(r'\n```$', '', code)
+    code = code.replace("```jsx", "").replace("```js", "").replace("```", "")
+
+    # Fix 1: Alias Hallucination (@components -> ./components)
+    if "from '@" in code or 'from "@' in code:
+        code = code.replace("from '@components", "from './components")
+        code = code.replace('from "@components', 'from "./components')
+        code = code.replace("from '@/", "from './")
+        code = code.replace('from "@/', 'from "./')
+
+    # Fix 2: Missing Relative Path
+    code = code.replace("from 'components/", "from './components/")
+    code = code.replace('from "components/', 'from "./components/')
+    code = code.replace("from 'pages/", "from './pages/")
+    code = code.replace('from "pages/', 'from "./pages/')
+
+    # Fix 3: Bad Prop Usage (Icon={...})
+    code = re.sub(r'\sIcon=\{[^}]+\}', '', code)
+
+    # Fix 4: Next.js hallucination
     if 'from "next/' in code or "from 'next/" in code:
         print(f"   {main.YELLOW}🔧 Fixing Next.js hallucination in {main.RESET}{filename}...")
         code = re.sub(r'import\s+.*?from\s+["\']next\/.*?["\'];', '', code)
         code = code.replace("<Link", "<a").replace("</Link>", "</a>")
         code = code.replace("<Image", "<img").replace("</Image>", "</img>")
 
-    bad_prefixes = ("Si", "Fa", "Gi", "Bi", "Ai", "Io", "Ri", "Ti", "Go", "Tb", "Hi", "Md", "Bs")
-    
-    for prefix in bad_prefixes:
-        if f"<{prefix}" in code:
-            code = re.sub(f"<{prefix}[a-zA-Z0-9]*", "<Box", code)
-            code = re.sub(f"{prefix}[a-zA-Z0-9]*", "Box", code) 
-
-    if "from 'lucide-react'" in code or 'from "lucide-react"' in code:
-        match = re.search(r"import\s+\{(.*?)\}\s+from\s+['\"]lucide-react['\"]", code, re.DOTALL)
-        if match:
-            original_content = match.group(1)
-            clean_content = original_content.replace('\n', '').replace('\r', '')
-            icons = [i.strip() for i in clean_content.split(',') if i.strip()]
-            
-            valid_icons = []
-            has_bad_icon = False
-            
-            for icon in icons:
-                if icon.startswith(bad_prefixes) or "Outline" in icon:
-                    has_bad_icon = True
-                else:
-                    valid_icons.append(icon)
-            
-            if "<Box" in code or has_bad_icon:
-                if "Box" not in valid_icons:
-                    valid_icons.append("Box")
-                if has_bad_icon:
-                     print(f"   {main.YELLOW}🔧 Fixing bad icons in {filename}: {main.RED}Found Invalid{main.RESET} -> Box")
-            
-            new_import_line = f"import {{ {', '.join(valid_icons)} }} from 'lucide-react';"
-            code = code.replace(match.group(0), new_import_line)
-
-    if "<Box" in code and "Box" not in code.split("from 'lucide-react'")[0]:
-        if "from 'lucide-react'" in code:
-             code = re.sub(r"import\s+\{(.*?)\}\s+from\s+['\"]lucide-react['\"]", r"import { \1, Box } from 'lucide-react'", code)
-        else:
+    # Fix 5: Icons
+    if "from 'lucide-react'" in code:
+        if "Fa" in code or "Si" in code: 
+             code = re.sub(r'[A-Z][a-z]+(Icon)?', 'Box', code)
              code = "import { Box } from 'lucide-react';\n" + code
 
     if "export default" not in code:
-        if "export function" in code:
-            code = code.replace("export function", "export default function")
-        else:
-            name = os.path.basename(filename).replace(".jsx", "")
-            code += f"\n\nexport default {name};"
+        name = os.path.basename(filename).replace(".jsx", "")
+        code += f"\n\nexport default {name};"
 
-    return code
-
-def fix_json_response(text):
-    try:
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-        if match: return json.loads(match.group(0))
-        return None
-    except: return None
+    return code.strip()
 
 def plan_architecture(user_prompt):
-    print(f"\n{main.CYAN}>>> [1/3] 🧠 LOCAL ARCHITECT: Blueprinting...{main.RESET}\n")
+    print(f"\n{main.CYAN}>>> [1/??] 🧠 LOCAL ARCHITECT: Blueprinting...{main.RESET}\n")
     
-    system = "You are a software architect. OUTPUT ONLY VALID JSON ARRAY."
-    user = f"""
-    Create a list of 4 to 6 files for a React App (Vite): "{user_prompt}".
-    RULES:
-    1. Output strictly a JSON Array of strings.
-    2. Example: ["src/App.jsx", "src/components/Header.jsx"]
-    3. INCLUDE "src/App.jsx".
-    4. DO NOT include main.jsx, index.html.
+    system = """You are a Senior React Architect.
+    OUTPUT RULES:
+    1. Reply ONLY with a valid JSON Array of strings.
+    2. DO NOT write "Here is the list" or any intro text.
+    3. JUST THE JSON.
+    
+    TASK: List files to build:
+    1. Max 5 files.
+    2. Always include "src/App.jsx".
+    3. If you need components, include them (e.g. "src/components/Navbar.jsx").
     """
     
+    user = f"""Request: "{user_prompt}"
+    JSON Array:"""
+    
     try:
-        resp_text = call_local_ai(system, user)
-        file_list = fix_json_response(resp_text)
+        resp_text = call_local_ai(system, user, json_mode=True)
+        file_list = extract_json_array(resp_text)
         
-        if not file_list: raise Exception("Invalid JSON")
+        if not file_list: raise Exception("Parser failed to find any files.")
 
         forbidden = ["src/main.jsx", "src/main.js", "index.html", "src/index.css", "vite.config.js"]
         filtered_list = [f for f in file_list if f not in forbidden]
         
-        if "src/App.jsx" not in filtered_list: filtered_list.append("src/App.jsx")
-        return filtered_list
+        final_list = []
+        for f in filtered_list:
+            if not f.startswith("src/"): f = f"src/{f}"
+            final_list.append(f)
+
+        if "src/App.jsx" not in final_list: final_list.insert(0, "src/App.jsx")
+        
+        return final_list
 
     except Exception as e:
         print(f"{main.YELLOW}⚠️ Architect Error: {main.RED} {e}. {main.RESET} Using Emergency Plan.")
-        return ["src/App.jsx", "src/components/Header.jsx", "src/components/Footer.jsx"]
+        return ["src/App.jsx", "src/components/Header.jsx", "src/components/Hero.jsx"]
 
 def plan_modification(user_request, existing_files):
     print(f"\n{main.CYAN}>>> [🔍] LOCAL AGENT: Analyzing impact...{main.RESET}")
-    system = "Output ONLY JSON Array."
-    user = f"""Which files need changes for: "{user_request}"? 
-    Existing: {json.dumps(existing_files)}"""
+    system = "You are a code analyzer. Return ONLY a JSON Array of filenames that need changes."
+    user = f"""Request: "{user_request}"
+    Files available: {json.dumps(existing_files)}
+    
+    Return JSON Array:"""
+    
     try:
-        resp_text = call_local_ai(system, user)
-        return fix_json_response(resp_text) or ["src/App.jsx"]
+        resp_text = call_local_ai(system, user, json_mode=True)
+        return extract_json_array(resp_text) or ["src/App.jsx"]
     except:
         return ["src/App.jsx"]
 
-def generate_file(target_file, global_context, user_prompt, is_modification=False):
+def generate_file(target_file, global_context, user_prompt, is_modification=False, current_step=None, total_steps=None):
     action = "MODIFYING" if is_modification else "BUILDER"
-    print(f"{main.YELLOW}>>> [2/3] 👷 {action} (Local): {main.RESET}{target_file}...")
+    
+    if current_step and total_steps:
+        step_display = f"[{current_step}/{total_steps}]"
+    else:
+        step_display = "[2/3]" if not is_modification else "[1/1]"
+
+    print(f"{main.YELLOW}>>> {step_display} 👷 {action} (Local): {main.RESET}{target_file}...")
     
     project_summary = ""
     for path, code in global_context.items():
-        project_summary += f"\n--- FILE: {path} ---\n{code[:400]}...\n"
+        if path != target_file:
+            project_summary += f"\n// File: {path}\n{code[:300]}...\n"
 
-    system = """You are a React Code Generator using Vite.
-    1. Output ONLY CODE. No markdown.
-    2. ALWAYS use 'export default function ComponentName'.
-    3. ICONS: Use ONLY generic names from 'lucide-react' (e.g., Home, User, Settings, Box).
-    4. DO NOT import 'next/link' or 'next/image'. Use <a> and <img> tags.
-    5. DO NOT import icons starting with Si, Fa, Ai, Bi, Gi.
+    system = """ROLE: Senior React Developer (Vite + Tailwind).
+
+    CRITICAL RULES:
+    1. OUTPUT FORMAT: Return ONLY the raw code string. DO NOT use Markdown blocks (```). DO NOT write introductions.
+    2. COMPONENT STRUCTURE: Use `export default function`. Ensure all hooks are at the top level.
+    3. ICONS: STRICTLY import from 'lucide-react'.
+       - CORRECT: import { Menu, X } from 'lucide-react';
+       - WRONG: import { Menu } from './icons';
+    4. IMPORTS: Use relative paths for local files (e.g., './Header').
+    5. STYLING (Tailwind):
+       - Always use `min-h-screen` and `w-full` for page containers.
+       - Use `flex` and `grid` for layouts.
+       - Ensure high contrast (e.g., bg-slate-950 text-white OR bg-gray-50 text-gray-900).
+    6. SAFETY:
+       - No nested <a> tags.
+       - Check if variables are defined before usage.
     """
 
     if is_modification:
         old_code = global_context.get(target_file, "// New File")
-        user = f"EDIT '{target_file}' for: '{user_prompt}'.\nOLD CODE:\n{old_code}"
+        user = f"""TASK: Rewrite '{target_file}' to satisfy: "{user_prompt}"
+        
+        CURRENT CODE:
+        {old_code}
+        
+        Output the FULL updated code."""
     else:
-        user = f"WRITE CODE for '{target_file}'.\nGOAL: '{user_prompt}'.\nCONTEXT:\n{project_summary}"
+        user = f"""TASK: Create code for file '{target_file}'.
+        APP GOAL: "{user_prompt}"
+        
+        OTHER FILES CONTEXT:
+        {project_summary}
+        
+        Output the code for {target_file}:"""
 
     for attempt in range(2):
         try:
             resp_text = call_local_ai(system, user)
-            
-            code = resp_text.replace("```jsx", "").replace("```javascript", "").replace("```js", "").replace("```", "").strip()
-            
-            code = sanitizar_codigo_agressivo(code, target_file)
-
+            code = sanitizar_codigo_agressivo(resp_text, target_file)
+            if len(code) < 50: raise Exception("Generated code too short")
             return code
         except Exception as e:
             print(f"{main.RED}⚠️ Error on attempt {main.RESET}{attempt+1}: {e}")
             time.sleep(1)
             
-    return f"// LOCAL ERROR: {str(e)}"
+    return "// ERROR: Failed to generate code."
 
 def save_file(rel_path, code):
     clean_path = rel_path.replace("base-app/", "").replace("./", "").replace("\\", "/")
-    while "src/src/" in clean_path: clean_path = clean_path.replace("src/src/", "src/")
+    if "src/" in clean_path and not clean_path.startswith("src/"):
+        clean_path = clean_path.split("src/")[-1]
+    
     if not clean_path.startswith("src/"): clean_path = f"src/{clean_path}"
 
     full_path = os.path.join(PROJECT_PATH, clean_path)
@@ -217,9 +291,18 @@ def save_file(rel_path, code):
     with open(full_path, "w", encoding="utf-8") as f:
         f.write(code)
 
-def check_dependencies(global_context):
-    print(f"\n{main.BLUE}>>> [3/3] 📦 DEPENDENCIES...{main.RESET}")
-    required_libs = ['react', 'react-dom', 'vite', '@vitejs/plugin-react', 'tailwindcss', 'postcss', 'autoprefixer', 'lucide-react']
+def check_dependencies(global_context, current_step=None, total_steps=None):
+    if current_step and total_steps:
+        step_display = f"[{current_step}/{total_steps}]"
+    else:
+        step_display = "[3/3]"
+
+    print(f"\n{main.BLUE}>>> {step_display} 📦 DEPENDENCIES...{main.RESET}")
+    required_libs = [
+        'react', 'react-dom', 'vite', 
+        '@vitejs/plugin-react-swc', 
+        'tailwindcss', 'postcss', 'autoprefixer', 'lucide-react'
+    ]
     subprocess.run(f"npm install {' '.join(required_libs)}", cwd=PROJECT_PATH, shell=True, stdout=subprocess.DEVNULL)
 
 def check_http_domain(slug):
@@ -249,38 +332,59 @@ def iniciar_sistema_local(model_name_from_config=None):
         print(f"{main.RED}❌ Error: 'ollama' library missing.{main.RESET}")
         return
 
-    # Atualiza o modelo com o que veio do credentials.txt via main.py
-    if model_name_from_config:
-        LOCAL_MODEL = model_name_from_config
-
     clear_screen()
     print(f"{main.CYAN}╔════════════════════════════════════════════════════╗{main.RESET}")
     print(f"{main.CYAN}║                  LOCAL GENERATOR                   ║{main.RESET}")
     print(f"{main.CYAN}╚════════════════════════════════════════════════════╝{main.RESET}\n")
-    print(f"{main.MAGENTA}Model in use: {main.YELLOW}{LOCAL_MODEL}{main.RESET}")
     
+    # Check for better models
     try:
-        ollama.list()
+        models_info = ollama.list()
+        available_models = [m['model'] for m in models_info['models']]
+        
+        # Priority Queue
+        if "qwen2.5-coder:7b" in available_models: LOCAL_MODEL = "qwen2.5-coder:7b"
+        elif "deepseek-r1:7b" in available_models: LOCAL_MODEL = "deepseek-r1:7b"
+        elif "mistral:latest" in available_models: LOCAL_MODEL = "mistral:latest"
+        elif model_name_from_config: LOCAL_MODEL = model_name_from_config
+        else: LOCAL_MODEL = "llama3.2:latest"
+        
     except:
-        print(f"{main.RED}❌ Error: Could not connect to Ollama.{main.RESET}")
-        return
+        LOCAL_MODEL = "llama3.2"
+
+    print(f"{main.MAGENTA}Model in use: {main.YELLOW}{LOCAL_MODEL}{main.RESET}")
 
     while True:
         initial_prompt = clean_input(f"\n{main.YELLOW}📝 App Idea {main.RED}(or 'exit'){main.RESET}: ")
+        print("")
+        
         if initial_prompt.lower() == 'exit': break
         
         reset_project()
 
         files_to_create = plan_architecture(initial_prompt)
-        print(f"📋 Plan: {main.CYAN}{files_to_create}\n")
+        
+        total_files = len(files_to_create)
+        total_workflow_steps = total_files + 2
+
+        print(f"📋 Plan: {main.CYAN}{files_to_create} {main.RESET}({total_files} files)\n")
         
         project_context = {}
-        for file in files_to_create:
-            code = generate_file(file, project_context, initial_prompt)
+        if "src/App.jsx" in files_to_create:
+            files_to_create.remove("src/App.jsx")
+            files_to_create.insert(0, "src/App.jsx")
+
+        for i, file in enumerate(files_to_create):
+            current_step_num = i + 2
+            code = generate_file(file, project_context, initial_prompt, 
+                                 current_step=current_step_num, 
+                                 total_steps=total_workflow_steps)
             project_context[file] = code
             save_file(file, code)
             
-        check_dependencies(project_context)
+        check_dependencies(project_context, 
+                           current_step=total_workflow_steps, 
+                           total_steps=total_workflow_steps)
         
         preview_process = None
         
@@ -305,11 +409,16 @@ def iniciar_sistema_local(model_name_from_config=None):
                 files_to_edit = plan_modification(change_request, files_to_create)
                 print(f"🎯 Files to Edit: {files_to_edit}")
                 
+                total_mod_steps = len(files_to_edit)
+
                 for f in files_to_edit:
                     if f not in files_to_create: files_to_create.append(f)
                 
-                for file in files_to_edit:
-                    new_code = generate_file(file, project_context, change_request, is_modification=True)
+                for i, file in enumerate(files_to_edit):
+                    new_code = generate_file(file, project_context, change_request, 
+                                             is_modification=True, 
+                                             current_step=i+1, 
+                                             total_steps=total_mod_steps)
                     project_context[file] = new_code
                     save_file(file, new_code)
                 

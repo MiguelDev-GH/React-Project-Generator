@@ -188,7 +188,7 @@ def main():
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
         print(f"{CYAN}╔════════════════════════════════════════════════════╗{RESET}")
-        print(f"{CYAN}║         REACT FACTORY LAUNCHER v7.9                ║{RESET}")
+        print(f"{CYAN}║             REACT PROJECT GENERATOR                ║{RESET}")
         print(f"{CYAN}╚════════════════════════════════════════════════════╝{RESET}")
         
         print(f"\n{YELLOW}Select Option:{RESET}\n")

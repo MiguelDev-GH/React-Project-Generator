@@ -17,6 +17,8 @@ venv/
 
 node_modules/
 base-app/node_modules/
+base-app/package-lock.json
+base-app/package.json
 
 dist/
 base-app/dist/
