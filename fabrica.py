@@ -7,7 +7,14 @@ import sys
 import shutil
 import json
 import signal
-import main  # <--- Importando as cores do main.py
+
+GREEN = "\033[92m"
+RED = "\033[91m"
+YELLOW = "\033[93m"
+CYAN = "\033[96m"
+MAGENTA = "\033[95m"
+BLUE = "\033[94m"
+RESET = "\033[0m"
 
 # --- PROVEDORES ---
 import google.generativeai as genai
@@ -16,25 +23,20 @@ try:
 except ImportError:
     Groq = None
 
-# -------------------------------- #
-# 🚀 FABRICA v7.1 (Shared Colors)
-# -------------------------------- #
-
 API_KEY = None
 SUPABASE_URL = None
 SUPABASE_KEY = None
 AI_MODEL = "models/gemini-2.5-flash-lite" 
-PROVIDER = "google" # Default
+PROVIDER = "google"
 USE_DATABASE = False 
 
 versao = "7.1-SHARED"
 
-# --- 1. LOAD CREDENTIALS ---
+# Credentials
 try:
     with open('credentials.txt', 'r', encoding='utf-8') as arquivo:
         conteudo = arquivo.read()
         
-        # Tenta pegar chaves específicas ou genéricas
         match_google = re.search(r'>\s*GOOGLE API KEY\s*=?\s*["\'](.*?)["\']', conteudo)
         match_generic = re.search(r'>\s*API KEY\s*=?\s*["\'](.*?)["\']', conteudo)
         
@@ -51,21 +53,20 @@ try:
         if match_model: AI_MODEL = match_model.group(1)
 
 except FileNotFoundError:
-    print(f"\n{main.RED}❌ CRITICAL ERROR: File 'credentials.txt' not found.{main.RESET}")
+    print(f"\n{RED}❌ CRITICAL ERROR: File 'credentials.txt' not found.{RESET}")
     sys.exit()
 
 if not API_KEY:
-    print(f"\n{main.RED}❌ ERROR: API KEY is missing.{main.RESET}")
+    print(f"\n{RED}❌ ERROR: API KEY is missing.{RESET}")
     sys.exit()
 
-# --- 2. SETUP PROVIDER ---
 model_lower = AI_MODEL.lower()
 client_groq = None
 
 if "llama" in model_lower or "mixtral" in model_lower or API_KEY.startswith("gsk_"):
     PROVIDER = "groq"
     if not Groq:
-        print(f"{main.RED}❌ ERROR: 'groq' library not installed.{main.RESET}")
+        print(f"{RED}❌ ERROR: 'groq' library not installed.{RESET}")
         sys.exit()
     client_groq = Groq(api_key=API_KEY)
 else:
@@ -88,10 +89,11 @@ def encerrar_processo(processo):
             os.killpg(os.getpgid(processo.pid), signal.SIGTERM)
     except: pass
 
-# --- WRAPPER AI ---
-def chamar_ai(prompt, sistema, json_mode=False):
-    """Função unificada para chamar Google ou Groq"""
-    
+def chamar_ai(prompt, sistema, json_mode=False, temp=None):
+    # Define temperatura padrão se não for informada
+    if temp is None:
+        temp = 0.5 if json_mode else 0.7
+
     if PROVIDER == "groq":
         try:
             resp = client_groq.chat.completions.create(
@@ -100,7 +102,7 @@ def chamar_ai(prompt, sistema, json_mode=False):
                     {"role": "user", "content": prompt}
                 ],
                 model=AI_MODEL,
-                temperature=0.5 if json_mode else 0.7,
+                temperature=temp, # Usa a temperatura customizada
                 response_format={"type": "json_object"} if json_mode else None
             )
             return resp.choices[0].message.content
@@ -109,8 +111,7 @@ def chamar_ai(prompt, sistema, json_mode=False):
 
     else: # Google Gemini
         try:
-            # Configuração específica para JSON ou Texto
-            config = {"temperature": 0.5, "response_mime_type": "application/json"} if json_mode else {"temperature": 0.7}
+            config = {"temperature": temp, "response_mime_type": "application/json"} if json_mode else {"temperature": temp}
             
             model = genai.GenerativeModel(
                 model_name=AI_MODEL,
@@ -120,31 +121,25 @@ def chamar_ai(prompt, sistema, json_mode=False):
             resp = model.generate_content(prompt)
             return resp.text
         except Exception as e:
-            # Fallback para modelo padrão sem system instruction se der erro
-            try:
-                model = genai.GenerativeModel(model_name=AI_MODEL)
-                full_prompt = f"System: {sistema}\nUser: {prompt}"
-                resp = model.generate_content(full_prompt)
-                return resp.text
-            except Exception as e2:
-                return f"Error Google: {e2}"
+            # Fallback simples
+            return f"Error Google: {e}"
 
 # --- CONFIG ---
 CAMINHO_PROJETO = os.path.join(os.getcwd(), "base-app")
 
 # --- DATABASE SETUP ---
 limpar_tela()
-print(f"{main.CYAN}╔════════════════════════════════════════════════════╗{main.RESET}")
-print(f"{main.CYAN}║           CLOUD FACTORY (GOOGLE/GROQ)              ║{main.RESET}")
-print(f"{main.CYAN}╚════════════════════════════════════════════════════╝{main.RESET}\n")
-print(f"{main.MAGENTA}Brain: {main.YELLOW}{AI_MODEL} ({PROVIDER.upper()}){main.RESET}")
+print(f"{CYAN}╔════════════════════════════════════════════════════╗{RESET}")
+print(f"{CYAN}║                     CLOUD AGENT                    ║{RESET}")
+print(f"{CYAN}╚════════════════════════════════════════════════════╝{RESET}\n")
+print(f"{MAGENTA}Brain: {YELLOW}{AI_MODEL} ({PROVIDER.upper()}){RESET}")
 
 while True:
-    print(f"\n{main.BLUE}🔌 Enable Database (Supabase)? (y/n){main.RESET}")
+    print(f"\n{BLUE}🔌 Enable Database (Supabase)? (y/n){RESET}")
     choice = input_limpo(">>> ").lower()
     if choice == 'y':
         if not SUPABASE_URL or not SUPABASE_KEY:
-            print(f"\n{main.RED}❌ ERROR: Supabase keys missing in credentials.txt{main.RESET}")
+            print(f"\n{RED}❌ ERROR: Supabase keys missing in credentials.txt{RESET}")
             sys.exit()
         USE_DATABASE = True
         break
@@ -153,7 +148,7 @@ while True:
         break
 
 def resetar_projeto():
-    print(f"{main.MAGENTA}>>> [🧹] FACTORY RESET: {main.RESET}Cleaning old files...\n")
+    print(f"{MAGENTA}>>> [🧹] FACTORY RESET: {RESET}Cleaning old files...\n")
     src_path = os.path.join(CAMINHO_PROJETO, "src")
     pastas_para_remover = ["components", "lib", "utils", "hooks", "pages", "context"]
     
@@ -169,7 +164,7 @@ def resetar_projeto():
                         f.write("export default function App() { return <div>Loading...</div> }")
                 else:
                     os.remove(item_path)
-    print(f"{main.GREEN}✅ Project Cleaned.{main.RESET}")
+    print(f"{GREEN}✅ Project Cleaned.{RESET}")
 
 def get_db_instructions():
     if USE_DATABASE:
@@ -188,7 +183,7 @@ def get_db_instructions():
         """
 
 def planejar_arquitetura(prompt_usuario):
-    print(f"\n{main.CYAN}>>> [1/??] 🧠 CLOUD ARCHITECT: Blueprinting...{main.RESET}\n")
+    print(f"\n{CYAN}>>> [1/??] 🧠 CLOUD ARCHITECT: Blueprinting...{RESET}\n")
     
     extra_rule = '5. Use "src/lib/supabase.js" for DB connection.' if USE_DATABASE else '5. 🛑 FORBIDDEN: Do NOT include "src/lib/supabase.js".'
 
@@ -221,11 +216,11 @@ def planejar_arquitetura(prompt_usuario):
         return lista_filtrada
 
     except Exception as e:
-        print(f"{main.YELLOW}⚠️ Architect Error: {e}. Fallback to basic.{main.RESET}")
+        print(f"{YELLOW}⚠️ Architect Error: {e}. Fallback to basic.{RESET}")
         return ["src/App.jsx"]
 
 def planejar_modificacao(pedido_usuario, lista_arquivos_existentes):
-    print(f"\n{main.CYAN}>>> [🔍] CLOUD AGENT: Analyzing impact...{main.RESET}")
+    print(f"\n{CYAN}>>> [🔍] CLOUD AGENT: Analyzing impact...{RESET}")
     
     sistema = f"""
     ROLE: Code Maintenance Expert.
@@ -249,80 +244,113 @@ def planejar_modificacao(pedido_usuario, lista_arquivos_existentes):
 def gerar_arquivo_especifico(arquivo_alvo, contexto_global, prompt_usuario, eh_modificacao=False, current_step=None, total_steps=None):
     acao = "MODIFYING" if eh_modificacao else "BUILDER"
     
-    # Visual de progresso igual ao fabrica_local
     if current_step and total_steps:
         step_display = f"[{current_step}/{total_steps}]"
     else:
         step_display = "[2/3]"
 
-    print(f"{main.YELLOW}>>> {step_display} 👷 {acao}: {main.RESET}{arquivo_alvo}...")
+    print(f"{YELLOW}>>> {step_display} 👷 {acao}: {RESET}{arquivo_alvo}...")
     
+    # CONTEXTO GERAL (Resumo dos outros arquivos para referência)
     resumo_projeto = ""
     for path, code in contexto_global.items():
-        resumo_projeto += f"\n--- FILE: {path} ---\n{code[:800]}...\n"
+        if path != arquivo_alvo:
+            resumo_projeto += f"\n--- FILE: {path} ---\n{code[:800]}...\n"
 
-    foco_prompt = f"User Change Request: {prompt_usuario}" if eh_modificacao else f"User Goal: {prompt_usuario}"
+    # LÓGICA DE MODIFICAÇÃO vs CRIAÇÃO
+    if eh_modificacao:
+        # LÊ O ARQUIVO DIRETO DO DISCO
+        caminho_real = os.path.join(CAMINHO_PROJETO, arquivo_alvo)
+        try:
+            with open(caminho_real, "r", encoding="utf-8") as f:
+                codigo_atual = f.read()
+        except Exception:
+            codigo_atual = contexto_global.get(arquivo_alvo, "")
 
-    sistema = f"""
-    ROLE: React Expert.
-    TASK: Write code for file: '{arquivo_alvo}'.
-    
-    CONTEXT:
-    - {get_db_instructions()}
-    
-    EXISTING FILES:
-    {resumo_projeto}
-    
-    RULES:
-    1. Output ONLY raw code (no markdown blocks like ```jsx).
-    2. ACTIVELY USE 'lucide-react' icons.
-    3. CRITICAL: You MUST write the import line for icons. Example: `import {{ Home, User }} from 'lucide-react';`.
-    4. DO NOT use prefixes like 'LucideHome'. Use standard names: <Home />, <User />.
-    5. Use 'tailwindcss' classes.
-    6. For 'src/App.jsx': MUST use `export default function App() {{ ... }}`.
-    7. Only modify things inside src/ folder.
-    8. If you use a component in JSX, it MUST be imported at the top.
-    9. NO UNUSED IMPORTS: It is forbidden to import components (like './pages/HomePage') if they are not rendered in the JSX. Check your imports against your return statement.
-    10. ICON ACCURACY: Use standard Lucide names (e.g., `Linkedin`, `Github`, `Twitter`). DO NOT invent names like `LinkedinIcon`, `GithubIcon` or `TwitterIcon`.
-    11. SPA STRUCTURE: If creating a Single Page App (scrollable), do not import Route/Page components. Use Section components instead.
-    12. NO TRUNCATION: Prioritize finishing the file syntax (closing tags) over adding more content. The file MUST end with valid syntax.
-    """
-    
+        sistema = f"""
+        ROLE: Automated Code Patcher / React Maintenance Agent.
+        TASK: Apply a specific transformation to the provided text file based on the instruction.
+
+        INSTRUCTION: {prompt_usuario}
+
+        INPUT FILE CONTENT:
+        {codigo_atual}
+
+        EXECUTION PROTOCOL:
+        1. Analyze the INPUT FILE CONTENT.
+        2. Locate ONLY the lines relevant to the INSTRUCTION.
+        3. Modify those specific lines to satisfy the instruction.
+        4. PRESERVE STRICTLY every other line, character, import, and indentation of the original file.
+        5. DO NOT optimize, DO NOT refactor, DO NOT reorganize.
+        6. If the instruction is visual (e.g., "change color"), change ONLY the Tailwind class.
+        7. Output the COMPLETED file content.
+
+        CRITICAL: The output must be a valid, compilable React file identical to the input, except for the requested change.
+        """
+        
+        foco_prompt = f"Apply change: {prompt_usuario}. Return full file code."
+
+    else:
+        # Lógica de criação (Builder) - REGRAS RESTAURADAS
+        sistema = f"""
+        ROLE: React Senior Code Generator.
+        TASK: Write code for file: '{arquivo_alvo}'.
+        
+        CONTEXT:
+        - {get_db_instructions()}
+        
+        EXISTING FILES:
+        {resumo_projeto}
+        
+        RULES:
+        1. Output ONLY raw code (no markdown blocks like ```jsx).
+        2. ACTIVELY USE 'lucide-react' icons.
+        3. CRITICAL: You MUST write the import line for icons. Example: `import {{ Home, User }} from 'lucide-react';`.
+        4. DO NOT use prefixes like 'LucideHome'. Use standard names: <Home />, <User />.
+        5. Use 'tailwindcss' classes.
+        6. For 'src/App.jsx': MUST use `export default function App() {{ ... }}`.
+        7. Only modify things inside src/ folder.
+        8. If you use a component in JSX, it MUST be imported at the top.
+        9. NO UNUSED IMPORTS: It is forbidden to import components (like './pages/HomePage') if they are not rendered in the JSX. Check your imports against your return statement.
+        10. ICON ACCURACY: Use standard Lucide names (e.g., `Linkedin`, `Github`, `Twitter`). DO NOT invent names like `LinkedinIcon`, `GithubIcon` or `TwitterIcon`.
+        11. SPA STRUCTURE: If creating a Single Page App (scrollable), do not import Route/Page components. Use Section components instead.
+        12. NO TRUNCATION: Prioritize finishing the file syntax (closing tags) over adding more content. The file MUST end with valid syntax.
+        """
+        foco_prompt = f"User Goal: {prompt_usuario}\nFile to write: {arquivo_alvo}"
+
     for tentativa in range(2):
         try:
-            codigo = chamar_ai(f"{foco_prompt}\nFile to write: {arquivo_alvo}", sistema, json_mode=False)
+            temperatura_uso = 0.1 if eh_modificacao else 0.7
+            codigo = chamar_ai(foco_prompt, sistema, json_mode=False, temp=temperatura_uso)
             if not codigo: raise Exception("Empty Response")
             
-            # Limpeza bruta de markdown
             codigo = codigo.replace("```jsx", "").replace("```javascript", "").replace("```js", "").replace("```", "")
             return codigo.strip()
             
         except Exception as e:
-            print(f"{main.RED}⚠️ Error on attempt {tentativa+1}: {e}{main.RESET}")
+            print(f"{RED}⚠️ Error on attempt {tentativa+1}: {e}{RESET}")
             time.sleep(2) 
             
     return f"// CRITICAL ERROR: {str(e)}"
 
 def carregar_whitelist_lucide():
-    """Lê os ícones reais disponíveis no node_modules"""
     caminho_index = os.path.join(CAMINHO_PROJETO, "node_modules", "lucide-react", "dist", "esm", "icons", "index.js")
     
     if not os.path.exists(caminho_index):
-        return None # node_modules ainda não existe (primeira execução)
+        return None
 
     try:
         with open(caminho_index, 'r', encoding='utf-8') as f:
             conteudo = f.read()
-            # Padrão: export { default as IconName } from ...
+            
             icones = re.findall(r"default as ([a-zA-Z0-9]+)", conteudo)
             return set(icones)
     except:
         return None
 
 def sanitizar_codigo_lucide(codigo):
-    """Substitui ícones alucinados por um ícone de fallback usando Alias"""
     validos = carregar_whitelist_lucide()
-    if not validos: return codigo # Não dá para validar sem node_modules
+    if not validos: return codigo 
 
     # Encontra a linha de importação do lucide-react
     match = re.search(r"import\s+\{(.*?)\}\s+from\s+['\"]lucide-react['\"]", codigo, re.DOTALL)
@@ -347,7 +375,7 @@ def sanitizar_codigo_lucide(codigo):
         if nome_real in validos:
             novos_itens.append(item)
         else:
-            print(f"{main.YELLOW}⚠️  Fixing hallucinated icon: '{nome_real}' -> '{fallback}'{main.RESET}")
+            print(f"{YELLOW}⚠️  Fixing hallucinated icon: '{nome_real}' -> '{fallback}'{RESET}")
             novos_itens.append(f"{fallback} as {alias_usado}")
             modificado = True
 
@@ -378,7 +406,7 @@ def verificar_dependencias_global(contexto_global, current_step=None, total_step
     else:
         step_display = "[3/3]"
 
-    print(f"\n{main.BLUE}>>> {step_display} 📦 DEPENDENCIES...{main.RESET}")
+    print(f"\n{BLUE}>>> {step_display} 📦 DEPENDENCIES...{RESET}")
     libs_obrigatorias = ['react', 'react-dom', 'vite', '@vitejs/plugin-react', 'tailwindcss', 'postcss', 'autoprefixer', 'lucide-react']
     blacklist = ['react-context', 'fs', 'path', 'os']
 
@@ -400,7 +428,6 @@ def verificar_dependencias_global(contexto_global, current_step=None, total_step
         subprocess.run(f"npm install {' '.join(para_instalar)}", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL)
 
 # --- DEPLOY & PREVIEW ---
-# --- DEPLOY & PREVIEW ---
 def verificar_dominio_http(slug):
     try:
         import urllib.request
@@ -410,7 +437,7 @@ def verificar_dominio_http(slug):
     except: return False
 
 def fazer_deploy(nome_inicial):
-    print(f"\n{main.MAGENTA}>>> [BUILDING]...{main.RESET}")
+    print(f"\n{MAGENTA}>>> [BUILDING]...{RESET}")
     subprocess.run("npm run build", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL)
     
     nome_atual = nome_inicial.replace(" ", "-").lower()
@@ -435,7 +462,7 @@ def iniciar_sistema(config=None):
 
 def main():
     while True:
-        prompt_inicial = input_limpo(f"\n{main.YELLOW}📝 App Idea {main.RED}(or 'exit'){main.RESET}: ")
+        prompt_inicial = input_limpo(f"\n{YELLOW}📝 App Idea {RED}(or 'exit'){RESET}: ")
         if prompt_inicial.lower() == 'exit': break
         
         resetar_projeto()
@@ -445,7 +472,7 @@ def main():
         total_files = len(arquivos_atuais)
         total_workflow_steps = total_files + 2 
         
-        print(f"📋 Plan: {main.CYAN}{arquivos_atuais}{main.RESET} ({total_files} files)")
+        print(f"📋 Plan: {CYAN}{arquivos_atuais}{RESET} ({total_files} files)")
         
         contexto_projeto = {}
         for i, arquivo in enumerate(arquivos_atuais):
@@ -464,20 +491,20 @@ def main():
         while True:
             if processo_preview: encerrar_processo(processo_preview)
             
-            print(f"\n{main.GREEN}✨ App Ready. Preview: http://localhost:5173{main.RESET}")
+            print(f"\n{GREEN}✨ App Ready. Preview: http://localhost:5173{RESET}")
             processo_preview = subprocess.Popen("npm run dev -- --open", cwd=CAMINHO_PROJETO, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL)
             
-            print("\n" + f"{main.CYAN}={main.RESET}"*30)
-            print(f" {main.GREEN}[1] ✏️  MODIFY{main.RESET}")
-            print(f" {main.MAGENTA}[2] 🚀 PUBLISH{main.RESET}")
-            print(f" {main.BLUE}[3] 🔙 NEW PROJECT{main.RESET}")
-            print(f" {main.RED}[4] ❌ EXIT{main.RESET}")
-            print(f"{main.CYAN}={main.RESET}"*30)
+            print("\n" + f"{CYAN}={RESET}"*30)
+            print(f" {GREEN}[1] ✏️  MODIFY{RESET}")
+            print(f" {MAGENTA}[2] 🚀 PUBLISH{RESET}")
+            print(f" {BLUE}[3] 🔙 NEW PROJECT{RESET}")
+            print(f" {RED}[4] ❌ EXIT{RESET}")
+            print(f"{CYAN}={RESET}"*30)
             
             opcao = input_limpo(">>> ")
             
             if opcao == "1":
-                pedido = input_limpo(f"\n{main.YELLOW}✏️  Change Request: {main.RESET}")
+                pedido = input_limpo(f"\n{YELLOW}✏️  Change Request: {RESET}")
                 arquivos_edit = planejar_modificacao(pedido, arquivos_atuais)
                 print(f"🎯 Files to Edit: {arquivos_edit}")
                 
@@ -494,12 +521,12 @@ def main():
                     contexto_projeto[arq] = novo_codigo
                     salvar_arquivo_caminho_custom(arq, novo_codigo)
                 
-                print(f"{main.GREEN}✅ Done! Reloading...{main.RESET}")
+                print(f"{GREEN}✅ Done! Reloading...{RESET}")
 
             elif opcao == "2":
                 encerrar_processo(processo_preview)
                 link = fazer_deploy(prompt_inicial[:10])
-                print(f"\n{main.GREEN}🚀 LIVE: https://{link}{main.RESET}\n")
+                print(f"\n{GREEN}🚀 LIVE: https://{link}{RESET}\n")
                 input("Press ENTER...")
                 break
             elif opcao == "3":
